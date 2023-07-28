@@ -7,6 +7,7 @@ library("tseries")
 ################################################################################
 
 # Load data (SINASC 2021)
+# https://opendatasus.saude.gov.br/dataset/sistema-de-informacao-sobre-nascidos-vivos-sinasc/resource/16b72608-a6f0-45f6-8dee-75925ad195ce
 df_births <- fread('SINASC_2021.csv', sep = ";")
 
 # Constrain dates to be 8 digits long
@@ -33,6 +34,7 @@ ggplot(df_births_summary,
 ################################################################################
 
 # Load data (SIM 2021)
+# https://opendatasus.saude.gov.br/dataset/sim/resource/2dee2fc9-d19f-41bc-b058-6d4154f126ab
 df_deaths <- fread('Mortalidade_Geral_2021.csv', sep = ";")
 
 # Maternal deaths (matches the 3.030 deaths officially reported for 2021)
@@ -146,3 +148,6 @@ df_mr$rate <- df_maternal_deaths_summary$count/df_births_summary$count
 ggplot(df_mr, 
        aes(x = date, y = rate)) + 
   geom_line()
+
+# Save the time series as a RDS file
+saveRDS(df_mr, file = "maternal_mortality_rate.rds")
