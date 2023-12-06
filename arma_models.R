@@ -20,91 +20,29 @@ df_train <- df_ts[1:(length(df_ts) - h)]
 df_train <- ts(df_train)
 
 plot.ts(df_train)
+
 #--------------------------- Fit ARMA ------------------------------------------
 #Possible combinations including: 0, 1 parameter, 2 parameters, ... 6 parameters
 #1 + 6 + 15 + 20 + 15 + 6 + 1 = 64 models 
 #64*64 = 4096 models considering, ar 0 up to ar 6 and ma 0 up to ma 6
 
-# All coef combinations
-list_combinations <- list(
-  "c(NA, NA, NA, NA, NA, NA)" = c(NA, NA, NA, NA, NA, NA), 
-  "c(0, NA, NA, NA, NA, NA)" = c(0, NA, NA, NA, NA, NA),
-  "c(NA, 0, NA, NA, NA, NA)" = c(NA, 0, NA, NA, NA, NA),
-  "c(NA, NA, 0, NA, NA, NA)" = c(NA, NA, 0, NA, NA, NA), 
-  "c(NA, NA, NA, 0, NA, NA)" = c(NA, NA, NA, 0, NA, NA), 
-  "c(NA, NA, NA, NA, 0, NA)" = c(NA, NA, NA, NA, 0, NA), 
-  "c(NA, NA, NA, NA, NA, 0)" = c(NA, NA, NA, NA, NA, 0),
-  "c(0, 0, NA, NA, NA, NA)" = c(0, 0, NA, NA, NA, NA), 
-  "c(0, NA, 0, NA, NA, NA)" = c(0, NA, 0, NA, NA, NA),
-  "c(0, NA, NA, 0, NA, NA)" = c(0, NA, NA, 0, NA, NA),
-  "c(0, NA, NA, NA, 0, NA)" = c(0, NA, NA, NA, 0, NA), 
-  "c(0, NA, NA, NA, NA, 0)" = c(0, NA, NA, NA, NA, 0), 
-  "c(NA, 0, 0, NA, NA, NA)" = c(NA, 0, 0, NA, NA, NA), 
-  "c(NA, 0, NA, 0, NA, NA)" = c(NA, 0, NA, 0, NA, NA), 
-  "c(NA, 0, NA, NA, 0, NA)" = c(NA, 0, NA, NA, 0, NA), 
-  "c(NA, 0, NA, NA, NA, 0)" = c(NA, 0, NA, NA, NA, 0), 
-  "c(NA, NA, 0, 0, NA, NA)" = c(NA, NA, 0, 0, NA, NA), 
-  "c(NA, NA, 0, NA, 0, NA)" = c(NA, NA, 0, NA, 0, NA), 
-  "c(NA, NA, 0, NA, NA, 0)" = c(NA, NA, 0, NA, NA, 0),
-  "c(NA, NA, NA, 0, 0, NA)" = c(NA, NA, NA, 0, 0, NA),
-  "c(NA, NA, NA, 0, NA, 0)" = c(NA, NA, NA, 0, NA, 0),
-  "c(NA, NA, NA, NA, 0, 0)" = c(NA, NA, NA, NA, 0, 0),
-  "c(0, 0, 0, NA, NA, NA)" = c(0, 0, 0, NA, NA, NA),
-  "c(0, 0, NA, 0, NA, NA)" = c(0, 0, NA, 0, NA, NA),
-  "c(0, 0, NA, NA, 0, NA)" = c(0, 0, NA, NA, 0, NA),
-  "c(0, 0, NA, NA, NA, 0)" = c(0, 0, NA, NA, NA, 0),
-  "c(0, NA, 0, 0, NA, NA)" = c(0, NA, 0, 0, NA, NA),
-  "c(0, NA, 0, NA, 0, NA)" = c(0, NA, 0, NA, 0, NA),
-  "c(0, NA, 0, NA, NA, 0)" = c(0, NA, 0, NA, NA, 0),
-  "c(0, NA, NA, 0, 0, NA)" = c(0, NA, NA, 0, 0, NA),
-  "c(0, NA, NA, 0, NA, 0)" = c(0, NA, NA, 0, NA, 0),
-  "c(0, NA, NA, NA, 0, 0)" = c(0, NA, NA, NA, 0, 0),
-  "c(NA, 0, 0, 0, NA, NA)" = c(NA, 0, 0, 0, NA, NA),
-  "c(NA, 0, 0, NA, 0, NA)" = c(NA, 0, 0, NA, 0, NA),
-  "c(NA, 0, 0, NA, NA, 0)" = c(NA, 0, 0, NA, NA, 0),
-  "c(NA, 0, NA, 0, 0, NA)" = c(NA, 0, NA, 0, 0, NA),
-  "c(NA, 0, NA, 0, NA, 0)" = c(NA, 0, NA, 0, NA, 0),
-  "c(NA, 0, NA, NA, 0, 0)" = c(NA, 0, NA, NA, 0, 0),
-  "c(NA, NA, 0, 0, 0, NA)" = c(NA, NA, 0, 0, 0, NA),
-  "c(NA, NA, 0, 0, NA, 0)" = c(NA, NA, 0, 0, NA, 0),
-  "c(NA, NA, 0, NA, 0, 0)" = c(NA, NA, 0, NA, 0, 0),
-  "c(NA, NA, NA, 0, 0, 0)" = c(NA, NA, NA, 0, 0, 0),
-  "c(0, 0, 0, 0, NA, NA)" = c(0, 0, 0, 0, NA, NA),
-  "c(0, 0, 0, NA, 0, NA)" = c(0, 0, 0, NA, 0, NA),
-  "c(0, 0, 0, NA, NA, 0)" = c(0, 0, 0, NA, NA, 0),
-  "c(0, 0, NA, 0, 0, NA)" = c(0, 0, NA, 0, 0, NA),
-  "c(0, 0, NA, 0, NA, 0)" = c(0, 0, NA, 0, NA, 0),
-  "c(0, 0, NA, NA, 0, 0)" = c(0, 0, NA, NA, 0, 0),
-  "c(0, NA, 0, 0, 0, NA)" = c(0, NA, 0, 0, 0, NA),
-  "c(0, NA, 0, 0, NA, 0)" = c(0, NA, 0, 0, NA, 0),
-  "c(0, NA, 0, NA, 0, 0)" = c(0, NA, 0, NA, 0, 0),
-  "c(0, NA, NA, 0, 0, 0)" = c(0, NA, NA, 0, 0, 0),
-  "c(NA, 0, 0, 0, 0, NA)" = c(NA, 0, 0, 0, 0, NA),
-  "c(NA, 0, 0, 0, NA, 0)" = c(NA, 0, 0, 0, NA, 0),
-  "c(NA, 0, 0, NA, 0, 0)" = c(NA, 0, 0, NA, 0, 0),
-  "c(NA, 0, NA, 0, 0, 0)" = c(NA, 0, NA, 0, 0, 0),
-  "c(NA, NA, 0, 0, 0, 0)" = c(NA, NA, 0, 0, 0, 0),
-  "c(0, 0, 0, 0, 0, NA)" = c(0, 0, 0, 0, 0, NA),
-  "c(0, 0, 0, 0, NA, 0)" = c(0, 0, 0, 0, NA, 0),
-  "c(0, 0, 0, NA, 0, 0)" = c(0, 0, 0, NA, 0, 0),
-  "c(0, 0, NA, 0, 0, 0)" = c(0, 0, NA, 0, 0, 0),
-  "c(0, NA, 0, 0, 0, 0)" = c(0, NA, 0, 0, 0, 0),
-  "c(NA, 0, 0, 0, 0, 0)" = c(NA, 0, 0, 0, 0, 0),
-  "c(0, 0, 0, 0, 0, 0)" = c(0, 0, 0, 0, 0, 0)
-  )
+source('model_orders.r')
+
+list_combinations <- list_combinations_ARMA6 # all combinations up to order 6
 
 # Start variables
 valid_models <- list()
 valid_models_aic <- list()
 valid_models_bic <- list()
-  
+ord <-  6  
+
 for (k in 1:length(list_combinations)) {
   ar <- list_combinations[[k]]
   for (j in 1:length(list_combinations)) {
     tryCatch({ # don't stop on errors
       fit_arima <- forecast::Arima(
         df_train, 
-        order = c(6, 1, 6), 
+        order = c(ord, 1, ord), 
         fixed = append(ar, list_combinations[[j]])
       )
       coef_df <- lmtest::coeftest(fit_arima)

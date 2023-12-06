@@ -25,7 +25,7 @@
 
 barma<- function (y, ar=NA, ma=NA, link = "logit",diag=1,h=6,X=NA,X_hat=NA,resid=1)
 {  
-  source("barma.fit.r")
+  source("supporting_scripts/barma.fit.r")
   
   if (min(y) <= 0 || max(y) >= 1)
     stop("OUT OF RANGE (0,1)!")

@@ -29,30 +29,30 @@ df_test <- ts(df_test)
 plot.ts(df_train)
 
 #-------------------------------------------------------------------------------
-########################## Análise de intervenção ##########################
+########################### Intervention Analysis ##############################
 #-------------------------------------------------------------------------------
 # outliers_excess_ts <- tsoutliers::tso(df_train)
-# plot(outliers_excess_ts) #Gráfico de detecção.
-# outliers_excess_ts$outliers #Informações gerais dos pontos encontrados.
-# outliers_idx <- outliers_excess_ts$outliers$ind #Posição dos outliers na série.
+# plot(outliers_excess_ts) #Detection graph.
+# outliers_excess_ts$outliers #General information about the points found.
+# outliers_idx <- outliers_excess_ts$outliers$ind #Position of outliers in the series.
 # # plot(forecast::tsclean(df_train))
 # # plot(df_train)
 # #length of our time series
 # n <- length(df_train)
 # 
-# (col_int <- outliers(c("AO", "LS", "AO", "AO"), outliers_idx[c(1, 3, 4, 6)])) #Colunas de interesse.
+# (col_int <- outliers(c("AO", "LS", "AO", "AO"), outliers_idx[c(1, 3, 4, 6)])) #Columns of interest.
 # 
-# #Esqueleto da série identificando a posição do outlier.
+# #Series skeleton identifying the position of the outlier.
 # esq_posi <- outliers.effects(col_int, n)
 # # efeito_outlier_series <- as.matrix(
 # #   rowSums(esq_posi[, c("LS81")])
 # # )
 # efeito_outlier_series <- esq_posi
 # 
-# #Coeficientes dos efeitos dos outliers.
+# #Outlier effect coefficients.
 # omega_hat <- unlist(outliers_excess_ts$outliers["coefhat"])
 # 
-# #Calculando vetor que representa o efeito do outlier.
+# #Calculating vector that represents the effect of the outlier.
 # out_effect <- efeito_outlier_series
 # out_effect <- as.data.frame(out_effect)
 # colnames(out_effect) <- c("AO65", "LS81", "AO101", "AO115")
@@ -68,7 +68,7 @@ plot.ts(df_train)
 # ao3_effect_ts <- ts(out_effect$AO115)
 # #ls_effect_ts <- ts(out_effect$LS81)
 # #
-# # #Substraindo o efeito da intervenção.
+# # #Subtracting the effect of the intervention.
 # df_train_clean <- df_train - ao1_effect_ts # extract aditive effect
 # df_train_clean <- df_train_clean - ls1_effect_ts # extract level shift effect
 # df_train_clean <- df_train_clean - ao2_effect_ts # extract aditive effect
@@ -85,10 +85,10 @@ plot.ts(df_train)
 #            #"Additive effect 3" = ao1_effect_ts,
 #            #"Additive effect" = ao2_effect_ts,
 #            #"Transient change effect" = ls_effect_ts),
-#      main = "Time series and outlier effects"))
-# # # #
-# # # #
-# # # # plot.ts(df_train_clean)
+#            main = "Time series and outlier effects"))
+# 
+# 
+# # plot.ts(df_train_clean)
 # df_train <- df_train_clean
 ################################################################################
 
@@ -173,8 +173,8 @@ kpss.test(df_train_diff) # Stationary data
 
 #-------------------------------------------------------------------------------
 # Required functions
-source("barma.r")
-source("barma.fit.r")
+source("supporting_scripts/barma.r")
+source("supporting_scripts/barma.fit.r")
 
 
 d <- 1 # No difference transformation
@@ -693,6 +693,7 @@ ggplot(df_resid, aes(x = Index)) +
             size = 0.8) +
   geom_point(aes(y = Residuals), 
              color = "#646464")
+
 ############################ Portmanteau tests #################################
 #----------------------------- Kwan and Sim -----------------------------------
 #------------------  Q4 test (Goodness-of-fit article) ------------------------
@@ -707,7 +708,7 @@ QKW4 <- matrix(rep(NA,30), nrow = 1, ncol = 30)
 Q4 <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
 
 # P-values
-source("Kwan_Chest.R")
+source("supporting_scripts/Kwan_Chest.R")
 
 # Lag m vector
 m <- 8
@@ -851,26 +852,26 @@ ggplot(df_plot_test, aes(x = date_formatted)) +
                         name = "")
 
 library("patchwork")
-png("pred_in_plot_2021.png", units = "in", width = 14, height = 5, res = 300)
+#png("pred_in_plot_2021.png", units = "in", width = 14, height = 5, res = 300)
 # out and in sample plots
 (insample_plot1 +
     insample_plot2 +
     #predi_both +
     plot_layout(ncol = 2))
-dev.off()
+#dev.off()
 
-png("pred_out_plot_2021.png", units = "in", width = 8, height = 5, res = 300)
+#png("pred_out_plot_2021.png", units = "in", width = 8, height = 5, res = 300)
 # out and in sample plots
 predi_both  
-dev.off()
+#dev.off()
 
-png("barma_diag_2021.png", units = "in", width = 13, height = 7, res = 300)
+#png("barma_diag_2021.png", units = "in", width = 13, height = 7, res = 300)
 (resid_pondera1 +
     acf_funct_barma +
     p_qqplot +
     p_densidade +
     plot_layout(ncol = 2))
-dev.off()
+#dev.off()
 
 # portmanteau Q4
 pormt_test

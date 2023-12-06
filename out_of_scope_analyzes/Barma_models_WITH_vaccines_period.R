@@ -5,13 +5,18 @@
 # resid = 2 : standardized residual 2
 # resid = 3 : standardized weighted residual
 # resid = 4 : deviance residual
+
 # diag = 0 : do not plot any graph (useful for simulations)
 # diag = 1 : plot graphs
 # diag = 2 : save graphs on ps files
+
 # link = "logit"
 # link = "probit"
 # link = "cloglog"
+
 # h is the prediction window
+
+#Example
 #barma(y, ar = p, ma = q, h = h, diag = 0, resid = 1, link = "logit")
 
 #detach("package:tseries", unload = TRUE)
@@ -38,54 +43,53 @@ df_train <- ts(df_train)
 #-------------------------------------------------------------------------------
 ########################## Análise de intervenção ##############################
 #-------------------------------------------------------------------------------
-outliers_excess_ts <- tsoutliers::tso(df_train) #Detectando outiliers.
-plot(outliers_excess_ts) #Gráfico de detecção.
-outliers_excess_ts$outliers #Informações gerais dos pontos encontrados.
-outliers_idx <- outliers_excess_ts$outliers$ind #Posição dos outliers na série.
-
-#length of our time series
-n <- length(df_train) # 128 if up to 135
-
-(col_int <- outliers(c("TC", "AO"), outliers_idx)) #Colunas de interesse.
-
-#Esqueleto da série identificando a posição do outlier.
-esq_posi <- outliers.effects(col_int, n) 
-# efeito_outlier_series <- as.matrix(
-#   rowSums(esq_posi[, c("LS81")])
-# )
-efeito_outlier_series <- esq_posi
-
-#Coeficientes dos efeitos dos outliers.
-omega_hat <- unlist(outliers_excess_ts$outliers["coefhat"])
-
-#Calculando vetor que representa o efeito do outlier.
-out_effect <- efeito_outlier_series
-out_effect <- as.data.frame(out_effect)
-colnames(out_effect) <- c("TC149", "AO171")
-out_effect[out_effect$AO171 == 1, ] <- as.numeric(omega_hat[2])
-out_effect$TC149 <- out_effect$TC149 * as.numeric(omega_hat[1])
-ao_effect_ts <- ts(out_effect$AO171)
-ts_effect_ts <- ts(out_effect$TC149)
-
-#Substraindo o efeito da intervenção.
-df_train_clean <- df_train - ao_effect_ts # extract aditive effect
-
-#ts_effect_ts[171] <- 0 # This observation has been treated as aditive
-df_train_clean <- df_train_clean - ts_effect_ts # extract transient effect
-
-plot(cbind("Original" = df_train,
-           "Without outliers" = df_train_clean,
-           "Additive effect" = ao_effect_ts,
-           "Transient change effect" = ts_effect_ts),
-     main = "Time series and outlier effects")
-
-
-plot.ts(df_train_clean)
+# outliers_excess_ts <- tsoutliers::tso(df_train) #Detectando outiliers.
+# plot(outliers_excess_ts) #Gráfico de detecção.
+# outliers_excess_ts$outliers #Informações gerais dos pontos encontrados.
+# outliers_idx <- outliers_excess_ts$outliers$ind #Posição dos outliers na série.
+# 
+# #length of our time series
+# n <- length(df_train) # 128 if up to 135
+# 
+# (col_int <- outliers(c("TC", "AO"), outliers_idx)) #Colunas de interesse.
+# 
+# #Esqueleto da série identificando a posição do outlier.
+# esq_posi <- outliers.effects(col_int, n) 
+# # efeito_outlier_series <- as.matrix(
+# #   rowSums(esq_posi[, c("LS81")])
+# # )
+# efeito_outlier_series <- esq_posi
+# 
+# #Coeficientes dos efeitos dos outliers.
+# omega_hat <- unlist(outliers_excess_ts$outliers["coefhat"])
+# 
+# #Calculando vetor que representa o efeito do outlier.
+# out_effect <- efeito_outlier_series
+# out_effect <- as.data.frame(out_effect)
+# colnames(out_effect) <- c("TC149", "AO171")
+# out_effect[out_effect$AO171 == 1, ] <- as.numeric(omega_hat[2])
+# out_effect$TC149 <- out_effect$TC149 * as.numeric(omega_hat[1])
+# ao_effect_ts <- ts(out_effect$AO171)
+# ts_effect_ts <- ts(out_effect$TC149)
+# 
+# #Substraindo o efeito da intervenção.
+# df_train_clean <- df_train - ao_effect_ts # extract aditive effect
+# 
+# #ts_effect_ts[171] <- 0 # This observation has been treated as aditive
+# df_train_clean <- df_train_clean - ts_effect_ts # extract transient effect
+# 
+# plot(cbind("Original" = df_train,
+#            "Without outliers" = df_train_clean,
+#            "Additive effect" = ao_effect_ts,
+#            "Transient change effect" = ts_effect_ts),
+#      main = "Time series and outlier effects")
+# 
+# 
+# plot.ts(df_train_clean)
 #-------------------------------------------------------------------------------
-
 # Required functions
-source("barma.r")
-source("barma.fit.r")
+source("supporting_scripts/barma.r")
+source("supporting_scripts/barma.fit.r")
 
 
 #d <- 0 # No difference transformation
@@ -93,9 +97,9 @@ d <- 1 # One difference transformation
 
 # Apply difference transformation to make data stationary (when applied)
 if(d == 0){
-  y <- df_train_clean
+  y <- df_train
 } else if (d > 0) {
-  y <- diff(df_train_clean, differences = d)
+  y <- diff(df_train, differences = d)
   # Transform the data into double-bounded (0-1)
   a = min(y)
   b = max(y)
@@ -112,115 +116,14 @@ if (min(y) == 0 || max(y) == 1) {
   y = (y*(n_data-1)+0.5)/n_data
 }
 
-
 #-------------------------- Fit BARMA ------------------------------------------
 #Possible combinations including: 0, 1 parameter, 2 parameters, ... 6 parameters
 #1 + 6 + 15 + 20 + 15 + 6 + 1 = 64 models 
 #64*64 = 4096 models considering, ar 0 up to ar 6 and ma 0 up to ma 6
 
-# All coef combinations up to order 6
-# list_combinations <- list(
-#   "c(NA)" = c(NA),
-#   "c(1)" = c(1),
-#   "c(2)" = c(2),
-#   "c(3)" = c(3),
-#   "c(4)" = c(4),
-#   "c(5)" = c(5),
-#   "c(6)" = c(6),
-#   "c(1, 2)" = c(1, 2),
-#   "c(1, 3)" = c(1, 3),
-#   "c(1, 4)" = c(1, 4),
-#   "c(1, 5)" = c(1, 5),
-#   "c(1, 6)" = c(1, 6),
-#   "c(2, 3)" = c(2, 3),
-#   "c(2, 4)" = c(2, 4),
-#   "c(2, 5)" = c(2, 5),
-#   "c(2, 6)" = c(2, 6),
-#   "c(3, 4)" = c(3, 4),
-#   "c(3, 5)" = c(3, 5),
-#   "c(3, 6)" = c(3, 6),
-#   "c(4, 5)" = c(4, 5),
-#   "c(4, 6)" = c(4, 6),
-#   "c(5, 6)" = c(5, 6),
-#   "c(1, 2, 3)" = c(1, 2, 3),
-#   "c(1, 2, 4)" = c(1, 2, 4),
-#   "c(1, 2, 5)" = c(1, 2, 5),
-#   "c(1, 2, 6)" = c(1, 2, 6),
-#   "c(1, 3, 4)" = c(1, 3, 4),
-#   "c(1, 3, 5)" = c(1, 3, 5),
-#   "c(1, 3, 6)" = c(1, 3, 6),
-#   "c(1, 4, 5)" = c(1, 4, 5),
-#   "c(1, 4, 6)" = c(1, 4, 6),
-#   "c(1, 5, 6)" = c(1, 5, 6),
-#   "c(2, 3, 4)" = c(2, 3, 4),
-#   "c(2, 3, 5)" = c(2, 3, 5),
-#   "c(2, 3, 6)" = c(2, 3, 6),
-#   "c(2, 4, 5)" = c(2, 4, 5),
-#   "c(2, 4, 6)" = c(2, 4, 6),
-#   "c(2, 5, 6)" = c(2, 5, 6),
-#   "c(3, 4, 5)" = c(3, 4, 5),
-#   "c(3, 4, 6)" = c(3, 4, 6),
-#   "c(3, 5, 6)" = c(3, 5, 6),
-#   "c(4, 5, 6)" = c(4, 5, 6),
-#   "c(1, 2, 3, 4)" = c(1, 2, 3, 4),
-#   "c(1, 2, 3, 5)" = c(1, 2, 3, 5),
-#   "c(1, 2, 3, 6)" = c(1, 2, 3, 6),
-#   "c(1, 2, 4, 5)" = c(1, 2, 4, 5),
-#   "c(1, 2, 4, 6)" = c(1, 2, 4, 6),
-#   "c(1, 2, 5, 6)" = c(1, 2, 5, 6),
-#   "c(1, 3, 4, 5)" = c(1, 3, 4, 5),
-#   "c(1, 3, 4, 6)" = c(1, 3, 4, 6),
-#   "c(1, 3, 5, 6)" = c(1, 3, 5, 6),
-#   "c(1, 4, 5, 6)" = c(1, 4, 5, 6),
-#   "c(2, 3, 4, 5)" = c(2, 3, 4, 5),
-#   "c(2, 3, 4, 6)" = c(2, 3, 4, 6),
-#   "c(2, 3, 5, 6)" = c(2, 3, 5, 6),
-#   "c(2, 4, 5, 6)" = c(2, 4, 5, 6),
-#   "c(3, 4, 5, 6)" = c(3, 4, 5, 6),
-#   "c(1, 2, 3, 4, 5)" = c(1, 2, 3, 4, 5),
-#   "c(1, 2, 3, 4, 6)" = c(1, 2, 3, 4, 6),
-#   "c(1, 2, 3, 5, 6)" = c(1, 2, 3, 5, 6),
-#   "c(1, 2, 4, 5, 6)" = c(1, 2, 4, 5, 6),
-#   "c(1, 3, 4, 5, 6)" = c(1, 3, 4, 5, 6),
-#   "c(2, 3, 4, 5, 6)" = c(2, 3, 4, 5, 6),
-#   "c(1, 2, 3, 4, 5, 6)" = c(1, 2, 3, 4, 5, 6)
-#   )
+source('supporting_scripts/model_orders.r')
 
-# All coef combinations up to order 5
-# list_combinations <- list(
-#   "c(NA)" = c(NA),
-#   "c(1)" = c(1),
-#   "c(2)" = c(2),
-#   "c(3)" = c(3),
-#   "c(4)" = c(4),
-#   "c(5)" = c(5),
-#   "c(1, 2)" = c(1, 2),
-#   "c(1, 3)" = c(1, 3),
-#   "c(1, 4)" = c(1, 4),
-#   "c(1, 5)" = c(1, 5),
-#   "c(2, 3)" = c(2, 3),
-#   "c(2, 4)" = c(2, 4),
-#   "c(2, 5)" = c(2, 5),
-#   "c(3, 4)" = c(3, 4),
-#   "c(3, 5)" = c(3, 5),
-#   "c(4, 5)" = c(4, 5),
-#   "c(1, 2, 3)" = c(1, 2, 3),
-#   "c(1, 2, 4)" = c(1, 2, 4),
-#   "c(1, 2, 5)" = c(1, 2, 5),
-#   "c(1, 3, 4)" = c(1, 3, 4),
-#   "c(1, 3, 5)" = c(1, 3, 5),
-#   "c(1, 4, 5)" = c(1, 4, 5),
-#   "c(2, 3, 4)" = c(2, 3, 4),
-#   "c(2, 3, 5)" = c(2, 3, 5),
-#   "c(2, 4, 5)" = c(2, 4, 5),
-#   "c(3, 4, 5)" = c(3, 4, 5),                           
-#   "c(1, 2, 3, 4)" = c(1, 2, 3, 4),
-#   "c(1, 2, 3, 5)" = c(1, 2, 3, 5),
-#   "c(1, 2, 4, 5)" = c(1, 2, 4, 5),
-#   "c(1, 3, 4, 5)" = c(1, 3, 4, 5),
-#   "c(2, 3, 4, 5)" = c(2, 3, 4, 5),
-#   "c(1, 2, 3, 4, 5)" = c(1, 2, 3, 4, 5)
-# )
+list_combinations <- list_combinations_BK6 # all combinations up to order 6
 
 # Start variables
 valid_models_ar_coef <- list()
@@ -238,7 +141,7 @@ for (k in 1:length(list_combinations)) {
         ma = list_combinations[[j]],
         h = h,
         diag = 0,
-        resid = 1,
+        #resid = 1,
         link = "logit"
       )
       coef_df <- as.data.frame(fit_barma$model)
