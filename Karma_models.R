@@ -154,10 +154,10 @@ for (k in 1:length(list_combinations)) {
   }
 }
 
-valid_models_ar_coef # - of 4096 
-valid_models_ma_coef # - of 4096
-valid_models_aic # min: AIC - | model selected: AIC -
-valid_models_bic # min: BIC - | ~
+valid_models_ar_coef # 121 of 4096 
+valid_models_ma_coef # 121 of 4096
+valid_models_aic # min: AIC -140.3621 | model selected: AIC -140.3621
+valid_models_bic # min: BIC -112.3219 | ~
 
 # BEST MODEL BY AIC
 which.min(valid_models_aic) # position of min in the vector
@@ -169,22 +169,22 @@ best_arma_combination_ma_aic <-
 
 fit_karma_best_aic <- karma(
   y,
-  ar = best_arma_combination_ar_aic, # 
-  ma = best_arma_combination_ma_aic, # 
+  ar = best_arma_combination_ar_aic, # c(1, 2, 3, 4)
+  ma = best_arma_combination_ma_aic, # c(2, 3, 4, 6)
   h = h,
   diag = 1,
-  resid = 3,
+  resid = 1,
   link = "logit",
   prec_start = 5
 )
 
-cpgram(fit_karma_best_aic$resid3, main = "Cumulative Periodogram of Residuals")
-car::qqPlot(fit_karma_best_aic$resid3)
-tseries::jarque.bera.test(fit_karma_best_aic$resid3)
-Box.test(fit_karma_best_aic$resid3, type = "Box-Pierce")
-Box.test(fit_karma_best_aic$resid3, type = "Ljung-Box")
-forecast::checkresiduals(fit_karma_best_aic$resid3, test = "LB")
-acf(fit_karma_best_aic$resid3)
+cpgram(fit_karma_best_aic$resid1, main = "Cumulative Periodogram of Residuals")
+car::qqPlot(fit_karma_best_aic$resid1)
+tseries::jarque.bera.test(fit_karma_best_aic$resid1)
+Box.test(fit_karma_best_aic$resid1, type = "Box-Pierce")
+Box.test(fit_karma_best_aic$resid1, type = "Ljung-Box")
+forecast::checkresiduals(fit_karma_best_aic$resid1, test = "LB")
+acf(fit_karma_best_aic$resid1)
 
 # BEST MODEL BY BIC
 which.min(valid_models_bic) # position of min in the vector
@@ -196,8 +196,8 @@ best_arma_combination_ma_bic <-
 
 fit_karma_best_bic <- karma(
   y,
-  ar = best_arma_combination_ar_bic, # 
-  ma = best_arma_combination_ma_bic, # 
+  ar = best_arma_combination_ar_bic, # c(1, 2, 3, 4)
+  ma = best_arma_combination_ma_bic, # c(2, 3, 4, 6)
   h = h,
   diag = 1,
   resid = 3,
