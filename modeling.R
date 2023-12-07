@@ -19,7 +19,7 @@ df <- df[1:135,] # Dados fim de abril
 #df <- df[1:135,] # Dados até 15 de maio
 df_ts <- ts(df$rate, start = c(2021, 1), frequency = 365)
 
-h <- 12 # forecast window
+h <- 10 # forecast window
 
 # Split data in train and test
 df_train <- df_ts[1:(length(df_ts) - h)]
@@ -221,7 +221,7 @@ plot.ts(y)
 #--------------------------------- Fit BARMA -----------------------------------
 ################################################################################
 
-# BEST MODEL BARMA AIC 
+# MODEL 1 BARMA AIC 
 fit_barma_best <- barma( 
   y,
   ar = c(1, 2, 5, 6),
@@ -235,6 +235,36 @@ fit_barma_best_order <- list(
   ar = c(1, 2, 5, 6),
   ma = c(3, 4, 5)
 )
+
+# # MODEL 2 BARMA AIC (BIC selected the same)
+# fit_barma_best <- barma(
+#   y,
+#   ar = c(1, 2, 4, 5),
+#   ma = c(3, 4, 5),
+#   h = h,
+#   diag = 1,
+#   resid = 1,
+#   link = "logit"
+# )
+# fit_barma_best_order <- list(
+#   ar = c(1, 2, 4, 5),
+#   ma = c(3, 4, 5)
+# )
+# 
+# # MODEL 2 BARMA AIC (BIC selected the same)
+# fit_barma_best <- barma(
+#   y,
+#   ar = c(1, 2, 4, 5),
+#   ma = c(2, 4, 6),
+#   h = h,
+#   diag = 1,
+#   resid = 1,
+#   link = "logit"
+# )
+# fit_barma_best_order <- list(
+#   ar = c(1, 2, 4, 5),
+#   ma = c(2, 4, 6)
+# )
 
 # # MODEL 2 BARMA AIC (BIC selected the same)
 # fit_barma_best <- barma(
@@ -298,6 +328,7 @@ if (extremes){
 
 if (d > 0){
   barma_forecast <- barma_forecast*(b-a)+a
+  # cumsum(c(df_train[length(df_train)], barma_forecast))
   barma_forecast <- diffinv(barma_forecast, 
                             differences = d,
                             xi = df_train[length(df_train)])
@@ -977,7 +1008,7 @@ resid_index_arma <-
              linetype = "dotted", 
              color = "lightblue", 
              size = 1) +  
-  coord_cartesian(ylim = c(-5, 5)) +  
+  coord_cartesian(ylim = c(-0.0025, 0.0025)) +  
   labs(x = "Índice", 
        y = "Resíduo", 
        title = "Resíduos (ARIMA)") +
@@ -999,7 +1030,7 @@ arma_qqplot <-
                    color = "black") +  
   qqplotr::stat_qq_line(color = "darkblue", 
                         size = 1) +  
-  qqplotr::stat_qq_band(bandType = "pointwise", 
+  qqplotr::stat_qq_band(bandType = "ks", 
                         mapping = aes(fill = "Bootstrap"), 
                         conf = 0.95, 
                         alpha = 0.3) +  
@@ -1018,6 +1049,19 @@ arma_qqplot <-
         panel.border = element_rect(color = "black", 
                                     fill = NA, 
                                     size = 1))
+# Create QQ plot
+car::qqPlot(df_resid_arma$Residuals, 
+            main = "Gráfico Q-Q dos resíduos (ARIMA)", 
+            xlab = "Quantis teóricos (normal)", 
+            ylab = "Quantis amostrais",
+            pch = 4, 
+            col = "black", 
+            cex = 1, 
+            las = 1, 
+            grid = TRUE)
+
+# Add a line through the first and third quartiles
+qqline(df_resid_arma$Residuals, col = "darkblue", lwd = 2)
 
 # Density
 arma_densidade <- 
@@ -1557,9 +1601,9 @@ colnames(table_metrics) <- c("h=1",
                              "h=7",
                              "h=8",
                              "h=9",
-                             "h=10",
-                             "h=11",
-                             "h=12"
+                             "h=10"#,
+                             # "h=11",
+                             # "h=12"
                              )
 
 table_metrics

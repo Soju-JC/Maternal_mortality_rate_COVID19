@@ -1,6 +1,10 @@
 # rm(list = ls()) 
 
+# Valid models up to order 6 can be loaded with: 
+# load("models/barma_models_order6.RData")
+#-------------------------------------------------------------------------------
 # Options for barma():
+
 # resid = 1 : standardized residual
 # resid = 2 : standardized residual 2
 # resid = 3 : standardized weighted residual
@@ -16,17 +20,16 @@
 
 # h is the prediction window
 
-#Example
-#barma(y, ar = p, ma = q, h = h, diag = 0, resid = 1, link = "logit")
+# Example
 
-#detach("package:tseries", unload = TRUE)
-#detach("package:tidyverse", unload = TRUE)
-#detach("package:itsmr", unload = TRUE)
-
+# barma(y, ar = p, ma = q, h = h, diag = 0, resid = 1, link = "logit")
+#-------------------------------------------------------------------------------
 library("tseries")
 library("tidyverse")
 library("itsmr")
 library("tsoutliers")
+library("foreach") # parallel loop
+library("doParallel") # parallel computation
 
 # Load the data
 df <- readRDS("maternal_mortality_rate_2021.rds")
@@ -45,8 +48,9 @@ df_test <- ts(df_test)
 plot.ts(df_train)
 #-------------------------------------------------------------------------------
 # Required functions
-source("barma.r")
-source("barma.fit.r")
+source("supporting_scripts/barma.r")
+source("supporting_scripts/barma.fit.r")
+source('supporting_scripts/model_orders.r')
 
 #d <- 0 # No difference transformation
 d <- 1 # One difference transformation
@@ -72,22 +76,33 @@ if (min(y) == 0 || max(y) == 1) {
   y = (y*(n_data-1)+0.5)/n_data
 }
 
+
+summary(y)
+plot.ts(y)
 #-------------------------- Fit BARMA ------------------------------------------
 #Possible combinations including: 0, 1 parameter, 2 parameters, ... 6 parameters
 #1 + 6 + 15 + 20 + 15 + 6 + 1 = 64 models 
 #64*64 = 4096 models considering, ar 0 up to ar 6 and ma 0 up to ma 6
 
-source('model_orders.r')
-
 list_combinations <- list_combinations_BK6 # all combinations up to order 6
 
-# Start variables
-valid_models_ar_coef <- list()
-valid_models_ma_coef <- list()
-valid_models_aic <- list()
-valid_models_bic <- list()
+# Register the parallel backend
+# Detect the phisical number of cores (logical = FALSE detects threads)
+n_cores <- detectCores(logical = TRUE) 
+cf <- 10 # Number of free CPU cores
+num_cores <- n_cores - cf # Reccomended at leat 1 CPU core free  
+cl <- makeCluster(num_cores)
+registerDoParallel(cl) 
+
+# Use foreach with %:% for nested loops
+result <- foreach(k = 1:length(list_combinations),
+                  .combine = rbind) %dopar% {
+  # Start variables for each outer loop iteration
+  valid_models_ar_coef <- list()
+  valid_models_ma_coef <- list()
+  valid_models_aic <- list()
+  valid_models_bic <- list()
   
-for (k in 1:length(list_combinations)) {
   ar <- list_combinations[[k]]
   for (j in 1:length(list_combinations)) {
     tryCatch({ # don't stop on errors
@@ -95,9 +110,9 @@ for (k in 1:length(list_combinations)) {
         y,
         ar = ar,
         ma = list_combinations[[j]],
-        #h = h,
+        h = h,
         diag = 0,
-        resid = 1,
+        #resid = 1,
         link = "logit"
       )
       coef_df <- as.data.frame(fit_barma$model)
@@ -115,7 +130,7 @@ for (k in 1:length(list_combinations)) {
         length(coef_ar_values) != 0 & # At leat 1 ar coef
         all(coef_ar_values > -0.9 & coef_ar_values < 0.9) & # Causal model
         all(coef_ma_values > -1.0 & coef_ma_values < 1.0) 
-        ){
+      ){
         valid_models_ar_coef <- append(
           valid_models_ar_coef, 
           list(ar)
@@ -139,61 +154,119 @@ for (k in 1:length(list_combinations)) {
       
     })
   }
+  
+  return(data.frame(
+    valid_models_ar_coef = I(valid_models_ar_coef),
+    valid_models_ma_coef = I(valid_models_ma_coef),
+    valid_models_aic = I(valid_models_aic),
+    valid_models_bic = I(valid_models_bic)
+    )
+  )
 }
+  
 
-valid_models_ar_coef # 78 of 4096 
-valid_models_ma_coef # 78 of 4096
-valid_models_aic # min: AIC -146.8761 | model selected: AIC -142.48082
-valid_models_bic # min: BIC -121.6399 | ~
+# Stop the cluster (REMEMBER TO STOP THE CLUSTER)
+stopCluster(cl)
 
-# BEST MODEL BY AIC
-which.min(valid_models_aic) # position of min in the vector
-valid_models_aic[[which.min(valid_models_aic)]] # AIC 
+# Combine the results from each iteration
+final_result <- do.call(rbind, result)
+
+## list of valid models (78 out of 4096 founded)
+final_result[ , ]
+
+# Save valid models
+# barma_models_order6 <- final_result
+# save(barma_models_order6, file = "models/barma_models_order6.RData")
+# load("models/barma_models_order6.RData")
+
+# Get the index of the first, second, third and fourth smallest AIC values
+select_index <- final_result["valid_models_aic", ]
+index_min <- which.min(select_index) # first
+select_index[index_min] <- NA
+index_second_min <- which.min(select_index) # second
+select_index[index_second_min] <- NA
+index_third_min <- which.min(select_index) # third
+select_index[index_third_min] <- NA
+index_fourth_min <- which.min(select_index) # fourth
+#min: AIC -146.8761 | model selected: AIC -142.48082
+
+# Position in the list of 1 out of 4 smallest AIC founded
+posi <- index_second_min
+
+# Selected model
+final_result["valid_models_aic", posi] # AIC 
 best_arma_combination_ar_aic <- 
-  valid_models_ar_coef[[which.min(valid_models_aic)]] # best
+  final_result["valid_models_ar_coef", posi][[1]] # best
 best_arma_combination_ma_aic <- 
-  valid_models_ma_coef[[which.min(valid_models_aic)]] # best
+  final_result["valid_models_ma_coef", posi][[1]] # best
 
+# Verify the selected model
 fit_barma_best_aic <- barma(
   y,
   ar = best_arma_combination_ar_aic, # 1, 2, 5, 6
   ma = best_arma_combination_ma_aic, # 3, 4, 5
   h = h,
   diag = 1,
-  resid = 3,
+  resid = 1,
   link = "logit"
 )
 
-cpgram(fit_barma_best_aic$resid3, main = "Cumulative Periodogram of Residuals")
-car::qqPlot(fit_barma_best_aic$resid3)
-tseries::jarque.bera.test(fit_barma_best_aic$resid3)
-Box.test(fit_barma_best_aic$resid3, type = "Box-Pierce")
-Box.test(fit_barma_best_aic$resid3, type = "Ljung-Box")
-forecast::checkresiduals(fit_barma_best_aic$resid3, test = "LB")
-acf(fit_barma_best_aic$resid3)
-
-# BEST MODEL BY BIC
-which.min(valid_models_bic) # position of min in the vector
-valid_models_bic[[which.min(valid_models_bic)]] # BIC
-best_arma_combination_ar_bic <- 
-  valid_models_ar_coef[[which.min(valid_models_bic)]] # best
-best_arma_combination_ma_bic <- 
-  valid_models_ma_coef[[which.min(valid_models_bic)]] # best
-
-fit_barma_best_bic <- barma(
-  y,
-  ar = best_arma_combination_ar_bic, # 1, 2, 5, 6
-  ma = best_arma_combination_ma_bic, # 3, 4, 5
-  h = h,
-  diag = 1,
-  resid = 3,
-  link = "logit"
-)
-
-cpgram(fit_barma_best_bic$resid3, main = "Cumulative Periodogram of Residuals")
-car::qqPlot(fit_barma_best_bic$resid3)
-tseries::jarque.bera.test(fit_barma_best_bic$resid3)
-Box.test(fit_barma_best_bic$resid3, type = "Box-Pierce")
-Box.test(fit_barma_best_bic$resid3, type = "Ljung-Box")
-forecast::checkresiduals(fit_barma_best_bic$resid3, test = "LB")
-acf(fit_barma_best_bic$resid3)
+## WITHOUT PARALLEL COMPUTATION: SLOW  
+# Start variables
+# valid_models_ar_coef <- list()
+# valid_models_ma_coef <- list()
+# valid_models_aic <- list()
+# valid_models_bic <- list()
+# for (k in 1:length(list_combinations)) {
+#   ar <- list_combinations[[k]]
+#   for (j in 1:length(list_combinations)) {
+#     tryCatch({ # don't stop on errors
+#       fit_barma <- barma(
+#         y,
+#         ar = ar,
+#         ma = list_combinations[[j]],
+#         h = h,
+#         diag = 0,
+#         #resid = 1,
+#         link = "logit"
+#       )
+#       coef_df <- as.data.frame(fit_barma$model)
+#       coef_pvalues <- coef_df$`Pr(>|z|)` # p-values
+#       
+#       coef_names <- rownames(coef_df)
+#       coef_ar <- coef_df[grepl("phi", coef_names, fixed = TRUE), ]
+#       coef_ar_values <- coef_ar$Estimate # ar coef
+#       coef_ma <- coef_df[grepl("theta", coef_names, fixed = TRUE), ]
+#       coef_ma_values <- coef_ma$Estimate # ma coef
+#       
+#       # Verify the valid models
+#       if (
+#         all(coef_pvalues < 0.05) & # 5% significance
+#         length(coef_ar_values) != 0 & # At leat 1 ar coef
+#         all(coef_ar_values > -0.9 & coef_ar_values < 0.9) & # Causal model
+#         all(coef_ma_values > -1.0 & coef_ma_values < 1.0) 
+#         ){
+#         valid_models_ar_coef <- append(
+#           valid_models_ar_coef, 
+#           list(ar)
+#         )
+#         valid_models_ma_coef <- append(
+#           valid_models_ma_coef, 
+#           list(list_combinations[[j]])
+#         )
+#         valid_models_aic <- append(
+#           valid_models_aic, 
+#           list(fit_barma$aic)
+#         )
+#         valid_models_bic <- append(
+#           valid_models_bic, 
+#           list(fit_barma$bic)
+#         )
+#       }
+#     }, error = function(e) {
+#       
+#     }, warning = function(w) {
+#       
+#     })
+#   }
+# }

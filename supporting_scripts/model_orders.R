@@ -1,5 +1,25 @@
 #------------------------BARMA and KARMA model structured-----------------------
 
+# All coef combinations up to order 4
+list_combinations_BK4 <- list(
+  "c(NA)" = c(NA),
+  "c(1)" = c(1),
+  "c(2)" = c(2),
+  "c(3)" = c(3),
+  "c(4)" = c(4),
+  "c(1, 2)" = c(1, 2),
+  "c(1, 3)" = c(1, 3),
+  "c(1, 4)" = c(1, 4),
+  "c(2, 3)" = c(2, 3),
+  "c(2, 4)" = c(2, 4),
+  "c(3, 4)" = c(3, 4),
+  "c(1, 2, 3)" = c(1, 2, 3),
+  "c(1, 2, 4)" = c(1, 2, 4),
+  "c(1, 3, 4)" = c(1, 3, 4),
+  "c(2, 3, 4)" = c(2, 3, 4),
+  "c(1, 2, 3, 4)" = c(1, 2, 3, 4)
+)
+
 # All coef combinations up to order 5
 list_combinations_BK5 <- list(
   "c(NA)" = c(NA),
@@ -105,6 +125,26 @@ list_combinations_BK6 <- list(
 )
 
 #--------------------------------ARMA structured--------------------------------
+
+# All coef combinations up to order 4
+list_combinations_ARMA4 <- list(
+  "c(NA, NA, NA, NA, NA)" = c(NA, NA, NA, NA),
+  "c(0, NA, NA, NA, NA)" = c(0, NA, NA, NA),
+  "c(NA, 0, NA, NA, NA)" = c(NA, 0, NA, NA),
+  "c(NA, NA, 0, NA, NA)" = c(NA, NA, 0, NA),
+  "c(NA, NA, NA, 0, NA)" = c(NA, NA, NA, 0),
+  "c(0, 0, NA, NA, NA)" = c(0, 0, NA, NA),
+  "c(0, NA, 0, NA, NA, 0)" = c(0, NA, 0, NA),
+  "c(0, NA, NA, 0, NA)" = c(0, NA, NA, 0),
+  "c(NA, 0, 0, NA, NA)" = c(NA, 0, 0, NA),
+  "c(NA, 0, NA, 0, NA)" = c(NA, 0, NA, 0),
+  "c(NA, NA, 0, 0, NA)" = c(NA, NA, 0, 0),
+  "c(0, 0, 0, NA, NA)" = c(0, 0, 0, NA),
+  "c(0, 0, NA, 0, NA)" = c(0, 0, NA, 0),
+  "c(0, NA, 0, 0, NA)" = c(0, NA, 0, 0),
+  "c(NA, 0, 0, 0, NA)" = c(NA, 0, 0, 0),
+  "c(0, 0, 0, 0, NA)" = c(0, 0, 0, 0)
+)
 
 # All coef combinations up to order 5
 list_combinations_ARMA5 <- list(
