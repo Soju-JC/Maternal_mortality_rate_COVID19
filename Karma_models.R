@@ -43,7 +43,7 @@ df <- readRDS("maternal_mortality_rate_2021.rds")
 df <- df[1:135,] # up to day 15/May
 df_ts <- ts(df$rate, start = c(2021, 1), frequency = 365)
 
-h <- 12 # forecast window
+h <- 7 # forecast window
 
 # Split data in train and test
 df_train <- df_ts[1:(length(df_ts) - h)]
@@ -62,17 +62,21 @@ source('supporting_scripts/karma.modified.fit.r')
 # Modified version including precision guess value
 source('supporting_scripts/karma.modified.r') 
 
-#d <- 0 # No difference transformation
-d <- 1 # One difference transformation
+d <- 1 # No difference transformation
+#d <- 1 # One difference transformation
 
+# Apply difference transformation to make data stationary (when applied)
 if(d == 0){
   y <- df_train
 } else if (d > 0) {
   y <- diff(df_train, differences = d)
   # Transform the data into double-bounded (0-1)
-  a = min(y)
-  b = max(y)
-  y = (y - a)/(b - a)
+  a = min(y) 
+  b = max(y)   
+  c = sd(y) 
+  # Smithson and Verkuilen (2006)
+  #y = (y - a)/(b - a)
+  y = (y - a + c) / (b + c - a + c)
 } else {warning("d NOT SUPPORTED!")}
 
 n_data = length(y)
@@ -87,7 +91,7 @@ if (min(y) == 0 || max(y) == 1) {
 }
 
 summary(y)
-plot.ts(y)
+plot.ts(y, ylim = c(0, 1))
 #-------------------------- Fit KARMA ------------------------------------------
 #Possible combinations including: 0, 1 parameter, 2 parameters, ... 6 parameters
 #1 + 6 + 15 + 20 + 15 + 6 + 1 = 64 models 
@@ -99,8 +103,8 @@ list_combinations <- list_combinations_BK6 # all combinations up to order 6
 
 # Register the parallel backend
 # Detect the phisical number of cores (logical = FALSE detects threads)
-n_cores <- detectCores(logical = TRUE) 
-cf <- 10 # Number of free CPU cores
+n_cores <- detectCores(logical = FALSE) 
+cf <- 1 # Number of free CPU cores
 num_cores <- n_cores - cf # Reccomended at leat 1 CPU core free  
 cl <- makeCluster(num_cores)
 registerDoParallel(cl) 
@@ -183,7 +187,7 @@ stopCluster(cl)
 # Combine the results from each iteration
 final_result <- do.call(rbind, result)
 
-## list of valid models (121 out of 4096 founded)
+## list of valid models (143 out of 4096 founded)
 final_result[ , ]
 
 # Save valid models
@@ -192,6 +196,7 @@ final_result[ , ]
 # load("models/karma_models_order6.RData")
 
 # Get the index of the first, second, third and fourth smallest AIC values
+#final_result <- karma_models_order6
 select_index <- final_result["valid_models_aic", ]
 index_min <- which.min(select_index) # first
 select_index[index_min] <- NA
@@ -200,7 +205,7 @@ select_index[index_second_min] <- NA
 index_third_min <- which.min(select_index) # third
 select_index[index_third_min] <- NA
 index_fourth_min <- which.min(select_index) # fourth
-#min: AIC -146.8761 | model selected: AIC -142.48082
+#min: AIC -215.6485344 | model selected: AIC -142.48082
 
 # Position in the list of 1 out of 4 smallest AIC founded
 posi <- index_min

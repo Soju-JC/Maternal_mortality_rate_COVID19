@@ -5,21 +5,20 @@ detach("package:tidyverse", unload = TRUE)
 detach("package:itsmr", unload = TRUE)
 detach("package:tsoutliers", unload = TRUE)
 
-library("e1071") # To calculate asymmetry and kustosis.
-library("tseries")
-library("tidyverse")
-library("itsmr")
-library("tsoutliers")
+library("e1071") # asymmetry and kustosis.
+library("tseries") # time series
+library("tidyverse") # data manipulation
+library("itsmr") # time series
+library("tsoutliers") # outliers
 
 ################################################################################
 #----------------------------- Load the data -----------------------------------
 ################################################################################
 df <- readRDS("maternal_mortality_rate_2021.rds")
-df <- df[1:135,] # Dados fim de abril
-#df <- df[1:135,] # Dados até 15 de maio
+df <- df[1:135,] # up to May 15
 df_ts <- ts(df$rate, start = c(2021, 1), frequency = 365)
 
-h <- 10 # forecast window
+h <- 7 # forecast window
 
 # Split data in train and test
 df_train <- df_ts[1:(length(df_ts) - h)]
@@ -34,7 +33,7 @@ plot.ts(df_train)
 ########################### Intervention Analysis ##############################
 ################################################################################
 
-# outliers_excess_ts <- tsoutliers::tso(df_train)
+# outliers_excess_ts <- tsoutliers::tso(df_train_clean)
 # plot(outliers_excess_ts) #Detection graph.
 # outliers_excess_ts$outliers #General information about the points found.
 # outliers_idx <- outliers_excess_ts$outliers$ind #Position of outliers in the series.
@@ -89,9 +88,9 @@ plot.ts(df_train)
 #            #"Additive effect" = ao2_effect_ts,
 #            #"Transient change effect" = ls_effect_ts),
 #            main = "Time series and outlier effects"))
-# 
-# 
-# # plot.ts(df_train_clean)
+# # 
+# # 
+# # # plot.ts(df_train_clean)
 # df_train <- df_train_clean
 
 ################################################################################
@@ -108,7 +107,7 @@ kurtosis(df_train) # Kurtosis.
 df_train_diff <- diff(df_train)
 plotc(df_train, df_train_diff) # diff = 1 vs diff = 0
 
-# Longmemory tests (d = 0.3527578 seems to highlight a period of 7)
+# #Longmemory tests (d = 0.3527578 seems to highlight a period of 7)
 # d.GPH <- fracdiff::fdGPH(df_train,bandw.exp = 0.7)
 # for(i in 1:10)
 #   print(cbind(beta=i*0.1,GPH=fracdiff::fdGPH(df_train,bandw.exp = i*0.1)$d))
@@ -178,7 +177,6 @@ adf.test(df_train, alternative = "stationary") # Not stationary
 kpss.test(df_train) # Not stationary
 adf.test(df_train_diff, alternative = "stationary") # Stationary data
 kpss.test(df_train_diff) # Stationary data
-
 #-------------------------------------------------------------------------------
 # Required functions
 source("supporting_scripts/barma.r") # barma
@@ -198,10 +196,12 @@ if(d == 0){
 } else if (d > 0) {
   y <- diff(df_train, differences = d)
   # Transform the data into double-bounded (0-1)
-  a = min(y)
-  b = max(y)
+  a = min(y) 
+  b = max(y)   
+  c = sd(y) 
   # Smithson and Verkuilen (2006)
-  y = (y - a)/(b - a)
+  #y = (y - a)/(b - a)
+  y = (y - a + c) / (b + c - a + c)
 } else {warning("d NOT SUPPORTED!")}
 
 n_data = length(y)
@@ -216,124 +216,59 @@ if (min(y) == 0 || max(y) == 1) {
 }
 
 summary(y)
-plot.ts(y)
+plot.ts(y, ylim = c(0, 1))
 ################################################################################
 #--------------------------------- Fit BARMA -----------------------------------
 ################################################################################
+#---------------------------------
+# min AIC and BIC (Portmontau failed)
+fit_barma_best <- barma( 
+  y,
+  ar = c(1, 2, 4, 5),
+  ma = c(3, 4, 5),
+  h = h,
+  diag = 0,
+  resid = 1,
+  link = "logit" 
+)
+fit_barma_best_order <- list(
+  ar = c(1, 2, 4, 5),
+  ma = c(3, 4, 5)
+)
 
-# MODEL 1 BARMA AIC 
+# second_min AIC and BIC (resid 3) ---------- SELECTED βARMA MODEL
 fit_barma_best <- barma( 
   y,
   ar = c(1, 2, 5, 6),
-  ma = c(3, 4, 5),
+  ma = c(3, 5),
   h = h,
-  diag = 1,
+  diag = 0,
   resid = 1,
   link = "logit" 
 )
 fit_barma_best_order <- list(
   ar = c(1, 2, 5, 6),
-  ma = c(3, 4, 5)
+  ma = c(3, 5)
 )
-
-# # MODEL 2 BARMA AIC (BIC selected the same)
-# fit_barma_best <- barma(
-#   y,
-#   ar = c(1, 2, 4, 5),
-#   ma = c(3, 4, 5),
-#   h = h,
-#   diag = 1,
-#   resid = 1,
-#   link = "logit"
-# )
-# fit_barma_best_order <- list(
-#   ar = c(1, 2, 4, 5),
-#   ma = c(3, 4, 5)
-# )
-# 
-# # MODEL 2 BARMA AIC (BIC selected the same)
-# fit_barma_best <- barma(
-#   y,
-#   ar = c(1, 2, 4, 5),
-#   ma = c(2, 4, 6),
-#   h = h,
-#   diag = 1,
-#   resid = 1,
-#   link = "logit"
-# )
-# fit_barma_best_order <- list(
-#   ar = c(1, 2, 4, 5),
-#   ma = c(2, 4, 6)
-# )
-
-# # MODEL 2 BARMA AIC (BIC selected the same)
-# fit_barma_best <- barma(
-#   y,
-#   ar = c(1, 2, 5),
-#   ma = c(1, 3, 5, 6),
-#   h = h,
-#   diag = 1,
-#   resid = 3,
-#   link = "logit"
-# )
-# fit_barma_best_order <- list(
-#   ar = c(1, 2, 5),
-#   ma = c(1, 3, 5, 6)
-# )
-
-# # BARMAX
-# fit_barma_best <- barma( 
-#   y,
-#   ar = c(4, 5),
-#   ma = c(1, 3, 4, 5, 6),
-#   h = h,
-#   diag = 1,
-#   resid = 1,
-#   link = "logit",
-#   X = as.matrix(ao1_effect_ts),
-#   X_hat = as.matrix(rep(0, length(df_test))) 
-# )
-# fit_barma_best_order <- list(
-#   ar = c(4, 5),
-#   ma = c(1, 3, 4, 5, 6)
-# )
-
-# test <- if_else(ao1_effect_ts == 0, 0, 1)
-# fit_barma_best <- barma( 
-#   y,
-#   ar = c(1, 2, 5, 6),
-#   ma = c(3, 4, 5),
-#   h = h,
-#   diag = 1,
-#   resid = 1,
-#   link = "logit",
-#   X = as.matrix(test),
-#   X_hat = as.matrix(rep(0, length(df_test))) 
-# )
-# fit_barma_best_order <- list(
-#   ar = c(1, 2, 5, 6),
-#   ma = c(3, 4, 5)
-# )
 
 barma_forecast <- fit_barma_best$forecast
 barma_fitted <- fit_barma_best$fitted
-res_barma <- fit_barma_best$resid1 
+res_barma <- fit_barma_best$resid3 
 
 #----------------------- Undo transformations and differences ------------------
-
 if (extremes){
   barma_forecast <- ((barma_forecast*n_data)-0.5)/(n_data-1)
   barma_fitted <- ((barma_fitted*n_data)-0.5)/(n_data-1)
 }
 
 if (d > 0){
-  barma_forecast <- barma_forecast*(b-a)+a
+  barma_forecast <- barma_forecast*(b+c-a+c)+(a-c)#barma_forecast*(b-a)+a
   # cumsum(c(df_train[length(df_train)], barma_forecast))
   barma_forecast <- diffinv(barma_forecast, 
                             differences = d,
                             xi = df_train[length(df_train)])
   barma_forecast <- barma_forecast[-1]
-  barma_fitted <- barma_fitted*(b-a)+a
+  barma_fitted <- barma_fitted*(b+c-a+c)+(a-c)#barma_fitted*(b-a)+a
 }
 
 # Fitted has max(ar,ma) NAs at the beginning
@@ -364,9 +299,10 @@ ts_barma_fitted <- ts(barma_fitted,
 # BARMA Residuals
 df_resid_barma <- data.frame(Index = 1:length(res_barma), Residuals = res_barma)
 
-# Jarque–Bera test
 # H0: joint hypothesis of skewness=0 and excess kurtosis=0
-tseries::jarque.bera.test(df_resid_barma$Residuals)
+tseries::jarque.bera.test(df_resid_barma$Residuals) # Jarque–Bera
+# H0: data came from a normally distributed population
+shapiro.test(df_resid_barma$Residuals) # Shapiro-Wilk
 
 # Residuals x Index
 resid_index_barma <- 
@@ -391,7 +327,7 @@ resid_index_barma <-
   coord_cartesian(ylim = c(-5, 5)) +  
   labs(x = "Índice", 
        y = "Resíduo", 
-       title = "Resíduo Padronizado (βARMA)") +
+       title = "Resíduo ponderado padronizado (βARMA)") +
   theme_bw() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
@@ -466,8 +402,20 @@ barma_densidade <-
 
 # ACF
 acf_func_barma <- 
-  forecast::ggAcf(df_resid_barma$Residuals) +
+  forecast::ggAcf(df_resid_barma$Residuals, lag.max = 15) +
   labs(title = "Função de autocorrelação dos resíduos (βARMA)") +
+  theme_bw() +  
+  theme(
+    plot.title = element_text(color = "black", face = "bold"),  
+    axis.title = element_text(color = "black", face = "bold"),  
+    axis.text = element_text(color = "black", face = "bold"),  
+    panel.border = element_rect(color = "black", fill = NA, size = 1)
+  ) 
+
+#PACF
+pacf_func_barma <- 
+  forecast::ggPacf(df_resid_barma$Residuals, lag.max = 15) +
+  labs(title = "Função de autocorrelação parcial dos resíduos (βARMA)") +
   theme_bw() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
@@ -478,7 +426,7 @@ acf_func_barma <-
 
 # Cumulative periodogram
 acum_periodogram_barma <- 
-  ggfortify::ggcpgram(df_resid_barma$Residuals) +
+  ggfortify::ggcpgram(df_resid_barma$Residuals, taper = 0.4,) +
   labs(x = "Lag", y = "Valores p", title = "Periodograma acumulado dos resíduos (βARMA)") +
   theme_bw() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),
@@ -489,63 +437,92 @@ acum_periodogram_barma <-
 cpgram(df_resid_barma$Residuals, main = "Cumulative Periodogram of Residuals (βARMA)")
 
 #-------------------------------- Portmanteau ----------------------------------  
+# Ruey Tsay (2005) Analysis of Financial Time Series, 2nd ed. (Wiley, ch. 2)
+# (My suggestion) calculate to m = p' + q' + log(T)... | (m > p + q)
 
 # Initializing response vector
-KwanS <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-Q4 <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-LB <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-DUF <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+KwanS_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+Q4_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+LB_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+DUF_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+
+KwanS_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+Q4_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+LB_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+DUF_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
 
 # df
-barma_fitdf <-  7
-  # max(fit_barma_best_order$ar) + 
-  # max(fit_barma_best_order$ma) # p + q
+barma_fitdf <-  4 + 3 # p'+q'
 
 # Lag m vector
 # min(10, T/5) robjhyndman
-m <- 10#barma_fitdf + 1
+m <- barma_fitdf + round(log(length(df_resid_barma$Residuals))) # p'+q'+log(T)
 vm <- c(seq(from = m, to = 30, by = 1))
 
-# initial_df = 5
-# n_portmanteau_tests = 30
-# m_tests = seq(from=5, to=5+n_portmanteau_tests)
-# df = initial_df-1+m+barma_fitdf
 for(m in vm)
 {
   # Kwan and Sim test(4) 
-  KwanS[,m] <- Kwan.sim.chest(df_resid_barma$Residuals, 
+  KwanS_P[,m] <- Kwan.sim.chest(df_resid_barma$Residuals, 
                              lag = m, 
                              fitdf = barma_fitdf, 
                              type = "correlation",
                              test = 4)$p.value 
   # New portmanteau test statistic (Goodness-of-fit article)
-  Q4[,m] <- Kwan.sim.chest(df_resid_barma$Residuals, 
+  Q4_P[,m] <- Kwan.sim.chest(df_resid_barma$Residuals, 
                            lag = m, 
                            fitdf = barma_fitdf,
                            type = "partial", 
                            test = 4)$p.value 
   # Ljung-Box
-  LB[,m] <- Box.test(df_resid_barma$Residuals, 
+  LB_P[,m] <- Box.test(df_resid_barma$Residuals, 
                      lag=m, 
                      fitdf=barma_fitdf, 
                      type="Ljung-Box")$p.value 
   
   # Robust Dufour and Roy nonparametric test (Residuals ranks)
-  DUF[,m] <- Dufour.test(df_resid_barma$Residuals, 
+  DUF_P[,m] <- Dufour.test(df_resid_barma$Residuals, 
                          lag=m, 
                          fitdf=barma_fitdf)$p.value 
+  
+  # Kwan and Sim test(4) 
+  KwanS_stat[,m] <- Kwan.sim.chest(df_resid_barma$Residuals, 
+                              lag = m, 
+                              fitdf = barma_fitdf, 
+                              type = "correlation",
+                              test = 4)$statistic
+  # New portmanteau test statistic (Goodness-of-fit article)
+  Q4_stat[,m] <- Kwan.sim.chest(df_resid_barma$Residuals, 
+                           lag = m, 
+                           fitdf = barma_fitdf,
+                           type = "partial", 
+                           test = 4)$statistic 
+  # Ljung-Box
+  LB_stat[,m] <- Box.test(df_resid_barma$Residuals, 
+                     lag=m, 
+                     fitdf=barma_fitdf, 
+                     type="Ljung-Box")$statistic 
+  
+  # Robust Dufour and Roy nonparametric test (Residuals ranks)
+  DUF_stat[,m] <- Dufour.test(df_resid_barma$Residuals, 
+                         lag=m, 
+                         fitdf=barma_fitdf)$statistic
 }
 
 nlag <- 30
 
-df_KwanS <- data.frame(Lag = 1:nlag, PValue = as.numeric(KwanS))
-df_q4 <- data.frame(Lag = 1:nlag, PValue = as.numeric(Q4))
-df_LB <- data.frame(Lag = 1:nlag, PValue = as.numeric(LB))
-df_DUF <- data.frame(Lag = 1:nlag, PValue = as.numeric(DUF))
+df_KwanS_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(KwanS_P))
+df_q4_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(Q4_P))
+df_LB_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(LB_P))
+df_DUF_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(DUF_P))
+
+df_KwanS_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(KwanS_stat))
+df_q4_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(Q4_stat))
+df_LB_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(LB_stat))
+df_DUF_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(DUF_stat))
 
 # Kwan and Sim test
 pormt_KwanS_barma <- 
-  ggplot(df_KwanS, aes(x = Lag, y = PValue)) +
+  ggplot(df_KwanS_P[!is.na(df_KwanS_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -558,7 +535,7 @@ pormt_KwanS_barma <-
 
 # Q4 (BARMA specific)
 pormt_q4_barma <- 
-  ggplot(df_q4[!is.na(df_q4$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_q4_P[!is.na(df_q4_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -571,7 +548,7 @@ pormt_q4_barma <-
 
 # Ljung-Box
 pormt_LB_barma <- 
-  ggplot(df_LB, aes(x = Lag, y = PValue)) +
+  ggplot(df_LB_P[!is.na(df_LB_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -586,11 +563,11 @@ pormt_LB_barma <-
 #Dufour, J. M., & Roy, R. (1986). Generalized portmanteau statistics and tests 
 #of randomness. Communications in Statistics - Theory and Methods
 pormt_DUF_barma <- 
-  ggplot(df_DUF, aes(x = Lag, y = PValue)) +
+  ggplot(df_DUF_P[!is.na(df_DUF_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
-  coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
-  labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Robust Dufour and Roy with ranks (βARMA)") +
+  coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limit
+  labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Dufour e Roy com ranks (βARMA)") +
   theme_bw() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
@@ -601,11 +578,11 @@ pormt_DUF_barma <-
 #--------------------------------- Fit KARMA -----------------------------------
 ################################################################################
 
-# BEST MODEL KARMA AIC 
+# min AIC  
 fit_karma_best <- karma( 
   y,
-  ar = c(1, 2, 3, 4),
-  ma = c(2, 3, 4, 6),
+  ar = c(1, 2, 3, 5, 6),
+  ma = c(1, 2, 4, 6),
   h = h,
   diag = 1,
   resid = 1,
@@ -613,8 +590,24 @@ fit_karma_best <- karma(
   prec_start = 5 
 )
 fit_karma_best_order <- list(
-  ar = c(1, 2, 3, 4),
-  ma = c(2, 3, 4, 6)
+  ar = c(1, 2, 3, 5, 6),
+  ma = c(1, 2, 4, 6)
+)
+
+# min BIC --------------------- KARMA model selected
+fit_karma_best <- karma( 
+  y,
+  ar = c(4, 5),
+  ma = c(1, 4),
+  h = h,
+  diag = 1,
+  resid = 1,
+  link = "logit",
+  prec_start = 5 
+)
+fit_karma_best_order <- list(
+  ar = c(4, 5),
+  ma = c(1, 4)
 )
 
 karma_forecast <- fit_karma_best$forecast
@@ -622,19 +615,18 @@ karma_fitted <- fit_karma_best$fitted
 res_karma <- fit_karma_best$resid3 
 
 #----------------------- Undo transformations and differences ------------------
-
 if (extremes){
   karma_forecast <- ((karma_forecast*n_data)-0.5)/(n_data-1)
   karma_fitted <- ((karma_fitted*n_data)-0.5)/(n_data-1)
 }
 
 if (d > 0){
-  karma_forecast <- karma_forecast*(b-a)+a
+  karma_forecast <- karma_forecast*(b+c-a+c)+(a-c)#karma_forecast*(b-a)+a
   karma_forecast <- diffinv(karma_forecast, 
                             differences = d,
                             xi = df_train[length(df_train)])
   karma_forecast <- karma_forecast[-1]
-  karma_fitted <- karma_fitted*(b-a)+a
+  karma_fitted <- karma_fitted*(b+c-a+c)+(a-c)#karma_fitted*(b-a)+a
 }
 
 # Fitted has max(ar,ma) NAs at the beginning
@@ -661,13 +653,14 @@ ts_karma_fitted <- ts(karma_fitted,
                       frequency = 365)
 
 #---------------------------- Diagnostics and Graphs ---------------------------
-
 # KARMA Residuals
 df_resid_karma <- data.frame(Index = 1:length(res_karma), Residuals = res_karma)
 
 # Jarque–Bera test
 # H0: joint hypothesis of skewness=0 and excess kurtosis=0
 tseries::jarque.bera.test(df_resid_karma$Residuals)
+# H0: data came from a normally distributed population
+shapiro.test(df_resid_barma$Residuals) # Shapiro-Wilk
 
 # Residuals x Index
 resid_index_karma <- 
@@ -692,7 +685,7 @@ resid_index_karma <-
   coord_cartesian(ylim = c(-5, 5)) +  
   labs(x = "Índice", 
        y = "Resíduo", 
-       title = "Resíduo Padronizado (KARMA)") +
+       title = "Resíduo quantílico (KARMA)") +
   theme_bw() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
@@ -767,7 +760,19 @@ karma_densidade <-
 
 # ACF
 acf_func_karma <- 
-  forecast::ggAcf(df_resid_karma$Residuals) +
+  forecast::ggAcf(df_resid_karma$Residuals, lag.max = 15) +
+  labs(title = "Função de autocorrelação dos resíduos (KARMA)") +
+  theme_bw() +  
+  theme(
+    plot.title = element_text(color = "black", face = "bold"),  
+    axis.title = element_text(color = "black", face = "bold"),  
+    axis.text = element_text(color = "black", face = "bold"),  
+    panel.border = element_rect(color = "black", fill = NA, size = 1)
+  ) 
+
+# PACF
+acf_func_karma <- 
+  forecast::ggPacf(df_resid_karma$Residuals, lag.max = 15) +
   labs(title = "Função de autocorrelação dos resíduos (KARMA)") +
   theme_bw() +  
   theme(
@@ -790,63 +795,92 @@ acum_periodogram_barma <-
 cpgram(df_resid_karma$Residuals, main = "Cumulative Periodogram of Residuals (KARMA)")
 
 #-------------------------------- Portmanteau ----------------------------------  
+# Ruey Tsay (2005) Analysis of Financial Time Series, 2nd ed. (Wiley, ch. 2)
+# (My suggestion) calculate to m = p' + q' + log(T)... | (m > p + q)
 
 # Initializing response vector
-KwanS <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-Q4 <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-LB <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-DUF <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+KwanS_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+Q4_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+LB_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+DUF_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+
+KwanS_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+Q4_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+LB_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+DUF_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
 
 # df
-barma_fitdf <-  8
-# max(fit_barma_best_order$ar) + 
-# max(fit_barma_best_order$ma) # p + q
+karma_fitdf <-  2 + 2 # p'+q'
 
 # Lag m vector
 # min(10, T/5) robjhyndman
-m <- 10#barma_fitdf + 1
+m <- karma_fitdf + round(log(length(df_resid_karma$Residuals))) # p'+q'+log(T)
 vm <- c(seq(from = m, to = 30, by = 1))
 
-# initial_df = 5
-# n_portmanteau_tests = 30
-# m_tests = seq(from=5, to=5+n_portmanteau_tests)
-# df = initial_df-1+m+barma_fitdf
 for(m in vm)
 {
   # Kwan and Sim test(4) 
-  KwanS[,m] <- Kwan.sim.chest(df_resid_karma$Residuals, 
-                              lag = m, 
-                              fitdf = barma_fitdf, 
-                              type = "correlation",
-                              test = 4)$p.value 
+  KwanS_P[,m] <- Kwan.sim.chest(df_resid_karma$Residuals, 
+                                lag = m, 
+                                fitdf = karma_fitdf, 
+                                type = "correlation",
+                                test = 4)$p.value 
   # New portmanteau test statistic (Goodness-of-fit article)
-  Q4[,m] <- Kwan.sim.chest(df_resid_karma$Residuals, 
-                           lag = m, 
-                           fitdf = barma_fitdf,
-                           type = "partial", 
-                           test = 4)$p.value 
+  Q4_P[,m] <- Kwan.sim.chest(df_resid_karma$Residuals, 
+                             lag = m, 
+                             fitdf = karma_fitdf,
+                             type = "partial", 
+                             test = 4)$p.value 
   # Ljung-Box
-  LB[,m] <- Box.test(df_resid_karma$Residuals, 
-                     lag=m, 
-                     fitdf=barma_fitdf, 
-                     type="Ljung-Box")$p.value 
+  LB_P[,m] <- Box.test(df_resid_karma$Residuals, 
+                       lag=m, 
+                       fitdf=karma_fitdf, 
+                       type="Ljung-Box")$p.value 
   
   # Robust Dufour and Roy nonparametric test (Residuals ranks)
-  DUF[,m] <- Dufour.test(df_resid_karma$Residuals, 
-                         lag=m, 
-                         fitdf=barma_fitdf)$p.value 
+  DUF_P[,m] <- Dufour.test(df_resid_karma$Residuals, 
+                           lag=m, 
+                           fitdf=karma_fitdf)$p.value 
+  
+  # Kwan and Sim test(4) 
+  KwanS_stat[,m] <- Kwan.sim.chest(df_resid_karma$Residuals, 
+                                   lag = m, 
+                                   fitdf = karma_fitdf, 
+                                   type = "correlation",
+                                   test = 4)$statistic
+  # New portmanteau test statistic (Goodness-of-fit article)
+  Q4_stat[,m] <- Kwan.sim.chest(df_resid_karma$Residuals, 
+                                lag = m, 
+                                fitdf = karma_fitdf,
+                                type = "partial", 
+                                test = 4)$statistic 
+  # Ljung-Box
+  LB_stat[,m] <- Box.test(df_resid_karma$Residuals, 
+                          lag=m, 
+                          fitdf=karma_fitdf, 
+                          type="Ljung-Box")$statistic 
+  
+  # Robust Dufour and Roy nonparametric test (Residuals ranks)
+  DUF_stat[,m] <- Dufour.test(df_resid_karma$Residuals, 
+                              lag=m, 
+                              fitdf=karma_fitdf)$statistic
 }
 
 nlag <- 30
 
-df_KwanS <- data.frame(Lag = 1:nlag, PValue = as.numeric(KwanS))
-df_q4 <- data.frame(Lag = 1:nlag, PValue = as.numeric(Q4))
-df_LB <- data.frame(Lag = 1:nlag, PValue = as.numeric(LB))
-df_DUF <- data.frame(Lag = 1:nlag, PValue = as.numeric(DUF))
+df_KwanS_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(KwanS_P))
+df_q4_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(Q4_P))
+df_LB_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(LB_P))
+df_DUF_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(DUF_P))
+
+df_KwanS_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(KwanS_stat))
+df_q4_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(Q4_stat))
+df_LB_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(LB_stat))
+df_DUF_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(DUF_stat))
 
 # Kwan and Sim test
 pormt_KwanS_karma <- 
-  ggplot(df_KwanS[!is.na(df_KwanS$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_KwanS_P[!is.na(df_KwanS_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -859,11 +893,11 @@ pormt_KwanS_karma <-
 
 # Q4 (BARMA specific)
 # pormt_q4_karma <- 
-#   ggplot(df_q4[!is.na(df_q4$PValue),], aes(x = Lag, y = PValue)) +
+#   ggplot(df_q4_P[!is.na(df_q4_P$PValue),], aes(x = Lag, y = PValue)) +
 #   geom_point(shape = 18, color = "darkblue", size = 3) +  
 #   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
 #   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
-#   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Q4 (βARMA)") +
+#   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Q4 (KARMA)") +
 #   theme_bw() +  # Use a theme with a boxed layout
 #   theme(plot.title = element_text(color = "black", face = "bold"),  
 #         axis.title = element_text(color = "black", face = "bold"),  
@@ -872,7 +906,7 @@ pormt_KwanS_karma <-
 
 # Ljung-Box
 pormt_LB_karma <- 
-  ggplot(df_LB[!is.na(df_LB$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_LB_P[!is.na(df_LB_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -887,68 +921,32 @@ pormt_LB_karma <-
 #Dufour, J. M., & Roy, R. (1986). Generalized portmanteau statistics and tests 
 #of randomness. Communications in Statistics - Theory and Methods
 pormt_DUF_karma <- 
-  ggplot(df_DUF[!is.na(df_DUF$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_DUF_P[!is.na(df_DUF_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
-  labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Robust Dufour and Roy with ranks (KARMA)") +
+  labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Dufour e Roy com ranks (KARMA)") +
   theme_bw() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
         panel.border = element_rect(color = "black", fill = NA, size = 1))
 
-
 ################################################################################
 #--------------------------------- Fit ARIMA -----------------------------------
 ################################################################################
 
-# BEST MODEL BY AIC: -1516.579
+# BEST MODEL BY AIC: -1576.45
 fit_arima <- forecast::Arima( 
   df_train,
   order = c(6, 1, 6),
-  fixed = c(NA, 0, 0, 0, 0, NA, # ar
-            0, NA, 0, 0, 0, NA) # ma
+  fixed = c(NA, NA, NA, 0, 0, NA, # ar
+            0, NA, 0, NA, 0, NA) # ma
 )
 
 best_fit_arima <- fit_arima
 
-# # BEST MODEL BY BIC: -1504.638 
-# fit_arima <- forecast::Arima(
-#   df_train,
-#   order = c(6, 1, 6),
-#   fixed = c(0, 0, 0, 0, NA, 0, # ar
-#             NA, 0, 0, 0, NA, 0) # ma
-# )
-# 
-# best_fit_arima <- fit_arima
-# 
-# # MODEL 2 BY AIC
-# fit_arima <- forecast::Arima(
-#   df_train,
-#   order = c(6, 1, 6),
-#   fixed = c(NA, NA, NA, 0, 0, NA, # ar
-#             0, NA, 0, NA, 0, NA) # ma
-# )
-# 
-# best_fit_arima <- fit_arima
-# 
-# # MODEL 2 BY BIC
-# fit_arima <- forecast::Arima(
-#   df_train,
-#   order = c(6, 1, 6),
-#   fixed = c(0, 0, 0, 0, NA, 0, # ar
-#             NA, 0, 0, 0, NA, 0) # ma
-# )
-# 
-# best_fit_arima <- fit_arima
- 
-
 # #BEST MODEL BY auto.arima
-# #Seems to perform better, but in reality, after some investigation, this actually
-# #produces fake good predictions. In the sense that it beats other models
-# #sometimes, but just because the prediction line is flat all along, not getting
-# #much variability.
 # fit_arima_auto <- forecast::auto.arima(
 #   df_train,
 #   max.p = 6,
@@ -981,6 +979,8 @@ Box.test(residuals(best_fit_arima), type = "Ljung-Box")
 # Jarque–Bera test
 # H0: joint hypothesis of skewness=0 and excess kurtosis=0
 tseries::jarque.bera.test(df_resid_arma$Residuals)
+# H0: data came from a normally distributed population
+shapiro.test(df_resid_barma$Residuals) # Shapiro-Wilk
 
 plotc(df_train,best_fit_arima$fitted)
 forecast::accuracy(best_fit_arima$fitted, df_train)
@@ -988,6 +988,7 @@ tsdiag(best_fit_arima, gof.lag = 25)
 test(best_fit_arima$residuals)
 car::qqPlot(best_fit_arima$res)
 tsdiag(best_fit_arima)
+
 # Residuals x Index
 resid_index_arma <- 
   ggplot(df_resid_arma, aes(x = Index, y = Residuals)) +
@@ -1060,9 +1061,6 @@ car::qqPlot(df_resid_arma$Residuals,
             las = 1, 
             grid = TRUE)
 
-# Add a line through the first and third quartiles
-qqline(df_resid_arma$Residuals, col = "darkblue", lwd = 2)
-
 # Density
 arma_densidade <- 
   ggplot(df_resid_arma, aes(x=Residuals)) +
@@ -1099,7 +1097,19 @@ arma_densidade <-
 
 # ACF
 acf_func_arma <- 
-  forecast::ggAcf(df_resid_arma$Residuals) +
+  forecast::ggAcf(df_resid_arma$Residuals, lag.max = 15) +
+  labs(title = "Função de autocorrelação dos resíduos (ARIMA)") +
+  theme_bw() +  
+  theme(
+    plot.title = element_text(color = "black", face = "bold"),  
+    axis.title = element_text(color = "black", face = "bold"),  
+    axis.text = element_text(color = "black", face = "bold"),  
+    panel.border = element_rect(color = "black", fill = NA, size = 1)
+  ) 
+
+# PACF
+acf_func_arma <- 
+  forecast::ggPacf(df_resid_arma$Residuals, lag.max = 15) +
   labs(title = "Função de autocorrelação dos resíduos (ARIMA)") +
   theme_bw() +  
   theme(
@@ -1122,62 +1132,92 @@ acum_periodogram_barma <-
 cpgram(df_resid_arma$Residuals, main = "Cumulative Periodogram of Residuals (ARIMA)")
 
 #-------------------------------- Portmanteau ----------------------------------  
+# Ruey Tsay (2005) Analysis of Financial Time Series, 2nd ed. (Wiley, ch. 2)
+# (My suggestion) calculate to m = p' + q' + log(T)... | (m > p + q)
+
 # Initializing response vector
-KwanS <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-Q4 <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-LB <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
-DUF <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+KwanS_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+Q4_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+LB_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+DUF_P <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+
+KwanS_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+Q4_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+LB_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
+DUF_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
 
 # df
-barma_fitdf <-  4
-# max(fit_barma_best_order$ar) + 
-# max(fit_barma_best_order$ma) # p + q
+arma_fitdf <-  1 + 2 # p'+q'
 
 # Lag m vector
 # min(10, T/5) robjhyndman
-m <- 5 #barma_fitdf + 1
+m <- arma_fitdf + round(log(length(df_resid_arma$Residuals))) # p'+q'+log(T)
 vm <- c(seq(from = m, to = 30, by = 1))
 
-# initial_df = 5
-# n_portmanteau_tests = 30
-# m_tests = seq(from=5, to=5+n_portmanteau_tests)
-# df = initial_df-1+m+barma_fitdf
 for(m in vm)
 {
   # Kwan and Sim test(4) 
-  KwanS[,m] <- Kwan.sim.chest(df_resid_arma$Residuals, 
-                              lag = m, 
-                              fitdf = barma_fitdf, 
-                              type = "correlation",
-                              test = 4)$p.value 
+  KwanS_P[,m] <- Kwan.sim.chest(df_resid_arma$Residuals, 
+                                lag = m, 
+                                fitdf = arma_fitdf, 
+                                type = "correlation",
+                                test = 4)$p.value 
   # New portmanteau test statistic (Goodness-of-fit article)
-  Q4[,m] <- Kwan.sim.chest(df_resid_arma$Residuals, 
-                           lag = m, 
-                           fitdf = barma_fitdf,
-                           type = "partial", 
-                           test = 4)$p.value 
+  Q4_P[,m] <- Kwan.sim.chest(df_resid_arma$Residuals, 
+                             lag = m, 
+                             fitdf = arma_fitdf,
+                             type = "partial", 
+                             test = 4)$p.value 
   # Ljung-Box
-  LB[,m] <- Box.test(df_resid_arma$Residuals, 
-                     lag=m, 
-                     fitdf=barma_fitdf, 
-                     type="Ljung-Box")$p.value 
+  LB_P[,m] <- Box.test(df_resid_arma$Residuals, 
+                       lag=m, 
+                       fitdf=arma_fitdf, 
+                       type="Ljung-Box")$p.value 
   
   # Robust Dufour and Roy nonparametric test (Residuals ranks)
-  DUF[,m] <- Dufour.test(df_resid_arma$Residuals, 
-                         lag=m, 
-                         fitdf=barma_fitdf)$p.value 
+  DUF_P[,m] <- Dufour.test(df_resid_arma$Residuals, 
+                           lag=m, 
+                           fitdf=arma_fitdf)$p.value 
+  
+  # Kwan and Sim test(4) 
+  KwanS_stat[,m] <- Kwan.sim.chest(df_resid_arma$Residuals, 
+                                   lag = m, 
+                                   fitdf = arma_fitdf, 
+                                   type = "correlation",
+                                   test = 4)$statistic
+  # New portmanteau test statistic (Goodness-of-fit article)
+  Q4_stat[,m] <- Kwan.sim.chest(df_resid_arma$Residuals, 
+                                lag = m, 
+                                fitdf = arma_fitdf,
+                                type = "partial", 
+                                test = 4)$statistic 
+  # Ljung-Box
+  LB_stat[,m] <- Box.test(df_resid_arma$Residuals, 
+                          lag=m, 
+                          fitdf=arma_fitdf, 
+                          type="Ljung-Box")$statistic 
+  
+  # Robust Dufour and Roy nonparametric test (Residuals ranks)
+  DUF_stat[,m] <- Dufour.test(df_resid_arma$Residuals, 
+                              lag=m, 
+                              fitdf=arma_fitdf)$statistic
 }
 
 nlag <- 30
 
-df_KwanS <- data.frame(Lag = 1:nlag, PValue = as.numeric(KwanS))
-df_q4 <- data.frame(Lag = 1:nlag, PValue = as.numeric(Q4))
-df_LB <- data.frame(Lag = 1:nlag, PValue = as.numeric(LB))
-df_DUF <- data.frame(Lag = 1:nlag, PValue = as.numeric(DUF))
+df_KwanS_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(KwanS_P))
+df_q4_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(Q4_P))
+df_LB_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(LB_P))
+df_DUF_P <- data.frame(Lag = 1:nlag, PValue = as.numeric(DUF_P))
+
+df_KwanS_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(KwanS_stat))
+df_q4_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(Q4_stat))
+df_LB_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(LB_stat))
+df_DUF_stat <- data.frame(Lag = 1:nlag, stat = as.numeric(DUF_stat))
 
 # Kwan and Sim test
 pormt_KwanS_arma <- 
-  ggplot(df_KwanS[!is.na(df_KwanS$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_KwanS_P[!is.na(df_KwanS_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -1190,7 +1230,7 @@ pormt_KwanS_arma <-
 
 # Q4 (BARMA specific)
 # pormt_q4_arma <- 
-#   ggplot(df_q4[!is.na(df_q4$PValue),], aes(x = Lag, y = PValue)) +
+#   ggplot(df_q4_P[!is.na(df_q4_P$PValue),], aes(x = Lag, y = PValue)) +
 #   geom_point(shape = 18, color = "darkblue", size = 3) +  
 #   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
 #   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -1203,7 +1243,7 @@ pormt_KwanS_arma <-
 
 # Ljung-Box
 pormt_LB_arma <- 
-  ggplot(df_LB[!is.na(df_LB$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_LB_P[!is.na(df_LB_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
@@ -1214,15 +1254,15 @@ pormt_LB_arma <-
         axis.text = element_text(color = "black"), 
         panel.border = element_rect(color = "black", fill = NA, size = 1))
 
-# Dufour and Roy 
-# Dufour, J. M., & Roy, R. (1986). Generalized portmanteau statistics and tests 
+# Robust Dufour and Roy 
+#Dufour, J. M., & Roy, R. (1986). Generalized portmanteau statistics and tests 
 #of randomness. Communications in Statistics - Theory and Methods
 pormt_DUF_arma <- 
-  ggplot(df_DUF[!is.na(df_DUF$PValue),], aes(x = Lag, y = PValue)) +
+  ggplot(df_DUF_P[!is.na(df_DUF_P$PValue),], aes(x = Lag, y = PValue)) +
   geom_point(shape = 18, color = "darkblue", size = 3) +  
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
-  labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Dufour and Roy with ranks (ARIMA)") +
+  labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Dufour e Roy com ranks (ARIMA)") +
   theme_bw() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
@@ -1236,18 +1276,13 @@ pormt_DUF_arma <-
 # Fitted
 # Create a data frame with the observed and predicted values
 # Maternal Mortality Ratio (deaths per 100,000 live births)
+
 #BARMA
 df_plot <- data.frame(
   date = time(df_train[1:length(barma_fitted)]),
   observed = as.numeric(df_train[1:length(barma_fitted)])*100000,
   predicted = as.numeric(barma_fitted)*100000
 )
-
-# df_plot2 <- data.frame(
-#   date = time(df_train[1:length(barma_fitted)]),
-#   observed = as.numeric(df_train[1:length(barma_fitted)]),
-#   predicted = as.numeric(barma_fitted)
-# )
 
 # Add a column with the date in Date format
 df_plot$date_formatted <- as.Date(paste0("2021-", df_plot$date),
@@ -1598,12 +1633,7 @@ colnames(table_metrics) <- c("h=1",
                              "h=4", 
                              "h=5", 
                              "h=6",
-                             "h=7",
-                             "h=8",
-                             "h=9",
-                             "h=10"#,
-                             # "h=11",
-                             # "h=12"
+                             "h=7"
                              )
 
 table_metrics

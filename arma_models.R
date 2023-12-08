@@ -16,7 +16,7 @@ df <- df[1:135,] # Dados até 15 de maio
 # Transform the data to time series object (day frequency)
 df_ts <- ts(df$rate, start = c(2021, 1), frequency = 365)
 
-h <- 12 # forecast window
+h <- 7 # forecast window
 
 # Split data in train and test
 df_train <- df_ts[1:(length(df_ts) - h)]
@@ -59,7 +59,7 @@ for (k in 1:length(list_combinations)) {
       coef_ma_values <- coef_ma$Estimate # ma coef
 
       if (
-        all(coef_pvalues < 0.1) & # 10% significance
+        all(coef_pvalues < 0.05) & # 5% significance
         length(coef_ar_values) != 0 & # At leat 1 ar coef
         all(coef_ar_values > -0.9 & coef_ar_values < 0.9) & # Causal model
         all(coef_ma_values > -1.0 & coef_ma_values < 1.0) # Invertible model
@@ -85,7 +85,7 @@ for (k in 1:length(list_combinations)) {
   }
 }
 
-valid_models # 104 of 4096 
+valid_models # 104 (161) of 4096 
 valid_models_aic # min: AIC -1516.579
 valid_models_bic # min: BIC -1504.638
 
