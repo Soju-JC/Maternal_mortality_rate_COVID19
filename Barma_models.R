@@ -51,6 +51,7 @@ plot.ts(df_train)
 source("supporting_scripts/barma.r")
 source("supporting_scripts/barma.fit.r")
 source('supporting_scripts/model_orders.r')
+source("supporting_scripts/Kwan_Chest.R")
 
 d <- 1 # No difference transformation
 #d <- 1 # One difference transformation
@@ -127,8 +128,20 @@ result <- foreach(k = 1:length(list_combinations),
       coef_ma <- coef_df[grepl("theta", coef_names, fixed = TRUE), ]
       coef_ma_values <- coef_ma$Estimate # ma coef
       
+      # coef_fitdf <- length(coef_ar_values) + length(coef_ma_values)
+      # m <- coef_fitdf + round(log(length(fit_barma$resid3)))
+      # q4_test <- rep(0, m)
+      # q4_test2 <- rep(0, length(q4_test))
+      # for (s in 1:length(q4_test)) {
+      # q4_test2[s] <- Kwan.sim.chest(fit_barma$resid3, 
+      #                           lag = coef_fitdf + 1, 
+      #                           fitdf = coef_fitdf,
+      #                           type = "partial", 
+      #                           test = 4)$p.value
+      # } 
       # Verify the valid models
       if (
+        # all(q4_test2 > 0.05) &
         all(coef_pvalues < 0.05) & # 5% significance 
         length(coef_ar_values) != 0 & # At leat 1 ar coef
         all(coef_ar_values > -0.9 & coef_ar_values < 0.9) & # Causal model
@@ -196,7 +209,7 @@ index_fourth_min <- which.min(select_index) # fourth
 #min: AIC -242.229| model selected: AIC -231.837, BIC -209.083
 
 # Position in the list of 1 out of 4 smallest AIC founded
-posi <- index_second_min
+posi <- index_min
 
 # Selected model
 #final_result["valid_models_aic", posi] # AIC 

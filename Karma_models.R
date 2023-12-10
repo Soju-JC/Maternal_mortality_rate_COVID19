@@ -140,8 +140,20 @@ result <- foreach(k = 1:length(list_combinations),
       coef_ma <- coef_df[grepl("theta", coef_names, fixed = TRUE), ]
       coef_ma_values <- coef_ma$Estimate # ma coef
       
+      # coef_fitdf <- length(coef_ar_values) + length(coef_ma_values)
+      # m <- coef_fitdf + round(log(length(fit_karma$resid3)))
+      # lung_test <- rep(0, m)
+      # lung_test2 <- rep(0, length(lung_test))
+      # for (s in 1:length(lung_test)) {
+      # lung_test2[s] <- Box.test(fit_karma$resid3, 
+      #                         lag=coef_fitdf + 1, 
+      #                         fitdf=coef_fitdf, 
+      #                         type="Ljung-Box")$p.value
+      # }
+      
       # Verify the valid models
       if (
+        #all(lung_test2 > 0.05) &
         all(coef_pvalues < 0.05) & # 5% significance
         length(coef_ar_values) != 0 & # At leat 1 ar coef
         all(coef_ar_values > -0.9 & coef_ar_values < 0.9) & # Causal model
@@ -187,7 +199,7 @@ stopCluster(cl)
 # Combine the results from each iteration
 final_result <- do.call(rbind, result)
 
-## list of valid models (143 out of 4096 founded)
+## list of valid models ((143) out of 4096 founded)
 final_result[ , ]
 
 # Save valid models
@@ -197,6 +209,7 @@ final_result[ , ]
 
 # Get the index of the first, second, third and fourth smallest AIC values
 #final_result <- karma_models_order6
+#select_index <- final_result["valid_models_bic", ]
 select_index <- final_result["valid_models_aic", ]
 index_min <- which.min(select_index) # first
 select_index[index_min] <- NA

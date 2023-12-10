@@ -8,8 +8,11 @@ detach("package:tsoutliers", unload = TRUE)
 library("e1071") # asymmetry and kustosis.
 library("tseries") # time series
 library("tidyverse") # data manipulation
+library("ggpubr") # qqplot
 library("itsmr") # time series
 library("tsoutliers") # outliers
+library("VGAM") # distribution aproximation
+library("fitdistrplus") # distribution aproximation
 
 ################################################################################
 #----------------------------- Load the data -----------------------------------
@@ -28,7 +31,6 @@ df_test <- df_ts[(length(df_train) + 1):(length(df_ts))]
 df_test <- ts(df_test)
 
 plot.ts(df_train)
-
 ################################################################################
 ########################### Intervention Analysis ##############################
 ################################################################################
@@ -100,8 +102,8 @@ plot.ts(df_train)
 # Data description.
 summary(df_train)  # Resume
 var(df_train)      # Variance.
-skewness(df_train) # Skewness.
-kurtosis(df_train) # Kurtosis.
+e1071::skewness(df_train) # Skewness.
+e1071::kurtosis(df_train) # Kurtosis.
 
 # Apply difference transformation to make data stationary
 df_train_diff <- diff(df_train)
@@ -196,12 +198,10 @@ if(d == 0){
 } else if (d > 0) {
   y <- diff(df_train, differences = d)
   # Transform the data into double-bounded (0-1)
+  c = sd(y)
   a = min(y) 
-  b = max(y)   
-  c = sd(y) 
-  # Smithson and Verkuilen (2006)
-  #y = (y - a)/(b - a)
-  y = (y - a + c) / (b + c - a + c)
+  b = max(y)    
+  y = (y - a + c)/(b + c - a + c)
 } else {warning("d NOT SUPPORTED!")}
 
 n_data = length(y)
@@ -217,11 +217,99 @@ if (min(y) == 0 || max(y) == 1) {
 
 summary(y)
 plot.ts(y, ylim = c(0, 1))
+
+adf.test(y, alternative = "stationary") # Stationary data
+kpss.test(y) # Stationary data
+# H0: joint hypothesis of skewness=0 and excess kurtosis=0
+tseries::jarque.bera.test(y) # Jarque–Bera
+# H0: data came from a normally distributed population
+shapiro.test(y) # Shapiro-Wilk
+
+# Data description.
+summary(y)  # Resume
+var(y)      # Variance.
+e1071::skewness(y) # Skewness.
+e1071::kurtosis(y) # Kurtosis.
+
+
+y_df <- as.data.frame(y)
+# Estimate shape parameters for the Beta distribution
+fit_beta <- fitdist(
+  as.numeric(y_df$x), 
+  "beta", 
+  method = "mle",
+  start = list(shape1 = 10, shape2 = 10)
+)
+
+shape1_beta <- fit_beta$estimate["shape1"]
+shape2_beta <- fit_beta$estimate["shape2"]
+
+# Estimate shape parameters for the Kumaraswamy distribution
+fit_kumar <- vglm(
+  as.numeric(x) ~ 1, 
+  kumar, 
+  y_df, 
+  trace = TRUE
+) # Intercept-only model
+
+coef(fit_kumar, matrix = TRUE) # Both on a log scale
+Coef(fit_kumar) # On the original scale
+
+shape1_kumar <- Coef(fit_kumar)[1]
+shape2_kumar <- Coef(fit_kumar)[2]
+
+# Plot with Beta distribution
+existing_plot <- 
+  ggplot(y_df, aes(x = as.numeric(x))) +
+  geom_density(aes(fill = "Densidade dos dados"), 
+               alpha = 0.2, 
+               color = "#0056B7", 
+               size = 1.1, 
+               linetype = "solid") +
+  stat_function(fun = dbeta, 
+                args = list(shape1 = shape1_beta, 
+                            shape2 = shape2_beta), 
+                aes(color = "Distribuição beta aproximada"), 
+                size = 1.1, 
+                linetype = "dashed") +
+  labs(title = 'Aproximação das distribuições consideradas',
+       x = 'Valores', 
+       y = 'Densidade') +
+  theme_pubr(legend = "bottom") +
+  theme(
+    plot.title = element_text(color = "black", face = "bold"),
+    axis.title = element_text(color = "black", face = "bold"),
+    axis.text = element_text(color = "black", face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    legend.background = element_rect(fill = "transparent"),
+    legend.title = element_blank(),
+    legend.text = element_text(face = "bold")
+  ) +
+  scale_fill_manual(values = c(
+    "Densidade dos dados" = "#0056B7")) +
+  scale_color_manual(values = c(
+    "Distribuição beta aproximada" = "#FF0000",
+    "Distribuição kumaraswamy aproximada" = "#008000")
+  )
+
+# Add the density from the Kumaraswamy distribution
+distro_data <- 
+  existing_plot +
+  stat_function(
+    fun = function(x) dkumar(x, 
+                             shape1 = shape1_kumar, 
+                             shape2 = shape2_kumar
+                             ), 
+    aes(color = "Distribuição kumaraswamy aproximada"), 
+    size = 1.1, 
+    linetype = "dotted"
+)
+
 ################################################################################
 #--------------------------------- Fit BARMA -----------------------------------
 ################################################################################
 #---------------------------------
-# min AIC and BIC (Portmontau failed)
+# min AIC and BIC (Portmonteau failed)
 fit_barma_best <- barma( 
   y,
   ar = c(1, 2, 4, 5),
@@ -328,7 +416,7 @@ resid_index_barma <-
   labs(x = "Índice", 
        y = "Resíduo", 
        title = "Resíduo ponderado padronizado (βARMA)") +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
         axis.title = element_text(color = "black", 
@@ -340,22 +428,39 @@ resid_index_barma <-
                                     size = 1))
 
 # Q-Q plot
+# barma_qqplot <- 
+#   ggplot(df_resid_barma, aes(sample = Residuals)) +
+#   ggplot2::stat_qq(shape = 4, 
+#                    color = "black") +  
+#   qqplotr::stat_qq_line(color = "darkblue", 
+#                         size = 1) +  
+#   qqplotr::stat_qq_band(bandType = "pointwise", 
+#                         mapping = aes(fill = "Bootstrap"), 
+#                         conf = 0.95, 
+#                         alpha = 0.3) +  
+#   scale_fill_manual(values = c("Bootstrap" = "#0066cc")) +
+#   guides(fill = "none") +
+#   labs(x = "Quantis teóricos (normal)", 
+#        y = "Quantis amostrais", 
+#        title = "Gráfico Q-Q dos resíduos (βARMA)") +
+#   theme_bw() +  
+#   theme(plot.title = element_text(color = "black", 
+#                                   face = "bold"),
+#         axis.title = element_text(color = "black", 
+#                                   face = "bold"), 
+#         axis.text = element_text(color = "black", 
+#                                  face = "bold"), 
+#         panel.border = element_rect(color = "black", 
+#                                     fill = NA, 
+#                                     size = 1))
+
 barma_qqplot <- 
-  ggplot(df_resid_barma, aes(sample = Residuals)) +
-  ggplot2::stat_qq(shape = 4, 
-                   color = "black") +  
-  qqplotr::stat_qq_line(color = "darkblue", 
-                        size = 1) +  
-  qqplotr::stat_qq_band(bandType = "pointwise", 
-                        mapping = aes(fill = "Bootstrap"), 
-                        conf = 0.95, 
-                        alpha = 0.3) +  
-  scale_fill_manual(values = c("Bootstrap" = "#0066cc")) +
-  guides(fill = "none") +
+ggqqplot(df_resid_barma, x = "Residuals",
+         ggtheme = theme_pubr(),
+         color = "darkblue",) +
   labs(x = "Quantis teóricos (normal)", 
        y = "Quantis amostrais", 
        title = "Gráfico Q-Q dos resíduos (βARMA)") +
-  theme_bw() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),
         axis.title = element_text(color = "black", 
@@ -382,7 +487,7 @@ barma_densidade <-
   labs(title='Distribuição dos resíduos (βARMA)', 
        x='Resíduos', 
        y='Densidade') +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),
         axis.title = element_text(color = "black", 
@@ -402,9 +507,12 @@ barma_densidade <-
 
 # ACF
 acf_func_barma <- 
-  forecast::ggAcf(df_resid_barma$Residuals, lag.max = 15) +
-  labs(title = "Função de autocorrelação dos resíduos (βARMA)") +
-  theme_bw() +  
+  forecast::ggAcf(df_resid_barma$Residuals, 
+                   lag.max = 15, 
+                  ylim = c(-0.3, 0.3)) +
+  labs(title = "Função de autocorrelação dos resíduos (βARMA)",
+       y = "FAC") +
+  theme_pubr() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
     axis.title = element_text(color = "black", face = "bold"),  
@@ -414,9 +522,12 @@ acf_func_barma <-
 
 #PACF
 pacf_func_barma <- 
-  forecast::ggPacf(df_resid_barma$Residuals, lag.max = 15) +
-  labs(title = "Função de autocorrelação parcial dos resíduos (βARMA)") +
-  theme_bw() +  
+  forecast::ggPacf(df_resid_barma$Residuals, 
+                   lag.max = 15, 
+                   ylim = c(-0.3, 0.3)) +
+  labs(title = "Função de autocorrelação parcial dos resíduos (βARMA)",
+       y = "FACP") +
+  theme_pubr() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
     axis.title = element_text(color = "black", face = "bold"),  
@@ -428,7 +539,7 @@ pacf_func_barma <-
 acum_periodogram_barma <- 
   ggfortify::ggcpgram(df_resid_barma$Residuals, taper = 0.4,) +
   labs(x = "Lag", y = "Valores p", title = "Periodograma acumulado dos resíduos (βARMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),
         axis.title = element_text(color = "black", face = "bold"),
         axis.text = element_text(color = "black"),
@@ -436,6 +547,23 @@ acum_periodogram_barma <-
 
 cpgram(df_resid_barma$Residuals, main = "Cumulative Periodogram of Residuals (βARMA)")
 
+plot_barma_residuals <- 
+ggplot(df_resid_barma, aes(x = Index, y = Residuals)) +
+  geom_line(color = "#808080", linewidth = 0.7) +
+  ylim(-4, 4) +
+  labs(title = "Série residual do modelo βARMA ajustado",
+       x = "Índice",
+       y = "Resíduos") + 
+  theme_pubr() +  
+  theme(plot.title = element_text(color = "black", 
+                                  face = "bold"),
+        axis.title = element_text(color = "black", 
+                                  face = "bold"), 
+        axis.text = element_text(color = "black", 
+                                 face = "bold"), 
+        panel.border = element_rect(color = "black", 
+                                    fill = NA, 
+                                    size = 1))
 #-------------------------------- Portmanteau ----------------------------------  
 # Ruey Tsay (2005) Analysis of Financial Time Series, 2nd ed. (Wiley, ch. 2)
 # (My suggestion) calculate to m = p' + q' + log(T)... | (m > p + q)
@@ -527,7 +655,7 @@ pormt_KwanS_barma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Kwan and Sim 4 (βARMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -540,7 +668,7 @@ pormt_q4_barma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Q4 (βARMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -553,7 +681,7 @@ pormt_LB_barma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Ljung-Box (βARMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -568,7 +696,7 @@ pormt_DUF_barma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limit
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Dufour e Roy com ranks (βARMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -578,7 +706,6 @@ pormt_DUF_barma <-
 #--------------------------------- Fit KARMA -----------------------------------
 ################################################################################
 
-# min AIC  
 fit_karma_best <- karma( 
   y,
   ar = c(1, 2, 3, 5, 6),
@@ -594,7 +721,7 @@ fit_karma_best_order <- list(
   ma = c(1, 2, 4, 6)
 )
 
-# min BIC --------------------- KARMA model selected
+# --------------------- KARMA model selected
 fit_karma_best <- karma( 
   y,
   ar = c(4, 5),
@@ -686,7 +813,7 @@ resid_index_karma <-
   labs(x = "Índice", 
        y = "Resíduo", 
        title = "Resíduo quantílico (KARMA)") +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
         axis.title = element_text(color = "black", 
@@ -698,22 +825,39 @@ resid_index_karma <-
                                     size = 1))
 
 # Q-Q plot
-karma_qqplot <- 
-  ggplot(df_resid_karma, aes(sample = Residuals)) +
-  ggplot2::stat_qq(shape = 4, 
-                   color = "black") +  
-  qqplotr::stat_qq_line(color = "darkblue", 
-                        size = 1) +  
-  qqplotr::stat_qq_band(bandType = "pointwise", 
-                        mapping = aes(fill = "Bootstrap"), 
-                        conf = 0.95, 
-                        alpha = 0.3) +  
-  scale_fill_manual(values = c("Bootstrap" = "#0066cc")) +
-  guides(fill = FALSE) +
+# karma_qqplot <- 
+#   ggplot(df_resid_karma, aes(sample = Residuals)) +
+#   ggplot2::stat_qq(shape = 4, 
+#                    color = "black") +  
+#   qqplotr::stat_qq_line(color = "darkblue", 
+#                         size = 1) +  
+#   qqplotr::stat_qq_band(bandType = "pointwise", 
+#                         mapping = aes(fill = "Bootstrap"), 
+#                         conf = 0.95, 
+#                         alpha = 0.3) +  
+#   scale_fill_manual(values = c("Bootstrap" = "#0066cc")) +
+#   guides(fill = FALSE) +
+#   labs(x = "Quantis teóricos (normal)", 
+#        y = "Quantis amostrais", 
+#        title = "Gráfico Q-Q dos resíduos (KARMA)") +
+#   theme_pubr() +  
+#   theme(plot.title = element_text(color = "black", 
+#                                   face = "bold"),
+#         axis.title = element_text(color = "black", 
+#                                   face = "bold"), 
+#         axis.text = element_text(color = "black", 
+#                                  face = "bold"), 
+#         panel.border = element_rect(color = "black", 
+#                                     fill = NA, 
+#                                     size = 1))
+
+karma_qqplot <-
+ggqqplot(df_resid_karma, x = "Residuals",
+         ggtheme = theme_pubr(),
+         color = "darkblue",) +
   labs(x = "Quantis teóricos (normal)", 
        y = "Quantis amostrais", 
        title = "Gráfico Q-Q dos resíduos (KARMA)") +
-  theme_bw() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),
         axis.title = element_text(color = "black", 
@@ -740,7 +884,7 @@ karma_densidade <-
   labs(title='Distribuição dos resíduos (KARMA)', 
        x='Resíduos', 
        y='Densidade') +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),
         axis.title = element_text(color = "black", 
@@ -760,9 +904,12 @@ karma_densidade <-
 
 # ACF
 acf_func_karma <- 
-  forecast::ggAcf(df_resid_karma$Residuals, lag.max = 15) +
-  labs(title = "Função de autocorrelação dos resíduos (KARMA)") +
-  theme_bw() +  
+  forecast::ggAcf(df_resid_karma$Residuals, 
+                   lag.max = 15, 
+                  ylim = c(-0.3, 0.3)) +
+  labs(title = "Função de autocorrelação dos resíduos (KARMA)",
+       y = "FAC") +
+  theme_pubr() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
     axis.title = element_text(color = "black", face = "bold"),  
@@ -771,10 +918,13 @@ acf_func_karma <-
   ) 
 
 # PACF
-acf_func_karma <- 
-  forecast::ggPacf(df_resid_karma$Residuals, lag.max = 15) +
-  labs(title = "Função de autocorrelação dos resíduos (KARMA)") +
-  theme_bw() +  
+pacf_func_karma <- 
+  forecast::ggPacf(df_resid_karma$Residuals, 
+                   lag.max = 15, 
+                   ylim = c(-0.3, 0.3)) +
+  labs(title = "Função de autocorrelação parcial dos resíduos (KARMA)",
+       y = "FACP") +
+  theme_pubr() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
     axis.title = element_text(color = "black", face = "bold"),  
@@ -786,7 +936,7 @@ acf_func_karma <-
 acum_periodogram_barma <- 
   ggfortify::ggcpgram(df_resid_karma$Residuals) +
   labs(x = "Lag", y = "Valores p", title = "Periodograma acumulado dos resíduos (KARMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),
         axis.title = element_text(color = "black", face = "bold"),
         axis.text = element_text(color = "black"),
@@ -794,6 +944,23 @@ acum_periodogram_barma <-
 
 cpgram(df_resid_karma$Residuals, main = "Cumulative Periodogram of Residuals (KARMA)")
 
+plot_karma_residuals <- 
+  ggplot(df_resid_karma, aes(x = Index, y = Residuals)) +
+  geom_line(color = "#808080", linewidth = 0.7) +
+  ylim(-4, 4) +
+  labs(title = "Série residual do modelo KARMA ajustado",
+       x = "Índice",
+       y = "Resíduos") + 
+  theme_pubr() +  
+  theme(plot.title = element_text(color = "black", 
+                                  face = "bold"),
+        axis.title = element_text(color = "black", 
+                                  face = "bold"), 
+        axis.text = element_text(color = "black", 
+                                 face = "bold"), 
+        panel.border = element_rect(color = "black", 
+                                    fill = NA, 
+                                    size = 1))
 #-------------------------------- Portmanteau ----------------------------------  
 # Ruey Tsay (2005) Analysis of Financial Time Series, 2nd ed. (Wiley, ch. 2)
 # (My suggestion) calculate to m = p' + q' + log(T)... | (m > p + q)
@@ -935,7 +1102,6 @@ pormt_DUF_karma <-
 ################################################################################
 #--------------------------------- Fit ARIMA -----------------------------------
 ################################################################################
-
 # BEST MODEL BY AIC: -1576.45
 fit_arima <- forecast::Arima( 
   df_train,
@@ -1025,22 +1191,39 @@ resid_index_arma <-
                                     size = 1))
 
 # Q-Q plot
+# arma_qqplot <- 
+#   ggplot(df_resid_arma, aes(sample = Residuals)) +
+#   ggplot2::stat_qq(shape = 4, 
+#                    color = "black") +  
+#   qqplotr::stat_qq_line(color = "darkblue", 
+#                         size = 1) +  
+#   qqplotr::stat_qq_band(bandType = "pointwise", 
+#                         mapping = aes(fill = "Bootstrap"), 
+#                         conf = 0.95, 
+#                         alpha = 0.3) +  
+#   scale_fill_manual(values = c("Bootstrap" = "#0066cc")) +
+#   guides(fill = FALSE) +
+#   labs(x = "Quantis teóricos (normal)", 
+#        y = "Quantis amostrais", 
+#        title = "Gráfico Q-Q dos resíduos (ARIMA)") +
+#   theme_bw() +  
+#   theme(plot.title = element_text(color = "black", 
+#                                   face = "bold"),
+#         axis.title = element_text(color = "black", 
+#                                   face = "bold"), 
+#         axis.text = element_text(color = "black", 
+#                                  face = "bold"), 
+#         panel.border = element_rect(color = "black", 
+#                                     fill = NA, 
+#                                     size = 1))
+
 arma_qqplot <- 
-  ggplot(df_resid_arma, aes(sample = Residuals)) +
-  ggplot2::stat_qq(shape = 4, 
-                   color = "black") +  
-  qqplotr::stat_qq_line(color = "darkblue", 
-                        size = 1) +  
-  qqplotr::stat_qq_band(bandType = "ks", 
-                        mapping = aes(fill = "Bootstrap"), 
-                        conf = 0.95, 
-                        alpha = 0.3) +  
-  scale_fill_manual(values = c("Bootstrap" = "#0066cc")) +
-  guides(fill = FALSE) +
+ggqqplot(df_resid_arma, x = "Residuals",
+         ggtheme = theme_pubr(),
+         color = "darkblue",) +
   labs(x = "Quantis teóricos (normal)", 
        y = "Quantis amostrais", 
        title = "Gráfico Q-Q dos resíduos (ARIMA)") +
-  theme_bw() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),
         axis.title = element_text(color = "black", 
@@ -1050,16 +1233,6 @@ arma_qqplot <-
         panel.border = element_rect(color = "black", 
                                     fill = NA, 
                                     size = 1))
-# Create QQ plot
-car::qqPlot(df_resid_arma$Residuals, 
-            main = "Gráfico Q-Q dos resíduos (ARIMA)", 
-            xlab = "Quantis teóricos (normal)", 
-            ylab = "Quantis amostrais",
-            pch = 4, 
-            col = "black", 
-            cex = 1, 
-            las = 1, 
-            grid = TRUE)
 
 # Density
 arma_densidade <- 
@@ -1077,7 +1250,7 @@ arma_densidade <-
   labs(title='Distribuição dos resíduos (ARIMA)', 
        x='Resíduos', 
        y='Densidade') +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),
         axis.title = element_text(color = "black", 
@@ -1097,9 +1270,12 @@ arma_densidade <-
 
 # ACF
 acf_func_arma <- 
-  forecast::ggAcf(df_resid_arma$Residuals, lag.max = 15) +
-  labs(title = "Função de autocorrelação dos resíduos (ARIMA)") +
-  theme_bw() +  
+  forecast::ggAcf(df_resid_arma$Residuals, 
+                  lag.max = 15, 
+                  ylim = c(-0.3, 0.3)) +
+  labs(title = "Função de autocorrelação dos resíduos (ARIMA)",
+       y = "FAC") +
+  theme_pubr() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
     axis.title = element_text(color = "black", face = "bold"),  
@@ -1108,10 +1284,13 @@ acf_func_arma <-
   ) 
 
 # PACF
-acf_func_arma <- 
-  forecast::ggPacf(df_resid_arma$Residuals, lag.max = 15) +
-  labs(title = "Função de autocorrelação dos resíduos (ARIMA)") +
-  theme_bw() +  
+pacf_func_arma <- 
+  forecast::ggPacf(df_resid_arma$Residuals, 
+                  lag.max = 15, 
+                  ylim = c(-0.3, 0.3)) +
+  labs(title = "Função de autocorrelação parcial dos resíduos (ARIMA)",
+       y = "FACP") +
+  theme_pubr() +  
   theme(
     plot.title = element_text(color = "black", face = "bold"),  
     axis.title = element_text(color = "black", face = "bold"),  
@@ -1123,7 +1302,7 @@ acf_func_arma <-
 acum_periodogram_barma <- 
   ggfortify::ggcpgram(df_resid_arma$Residuals) +
   labs(x = "Lag", y = "Valores p", title = "Periodograma acumulado dos resíduos (ARIMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),
         axis.title = element_text(color = "black", face = "bold"),
         axis.text = element_text(color = "black"),
@@ -1131,6 +1310,26 @@ acum_periodogram_barma <-
 
 cpgram(df_resid_arma$Residuals, main = "Cumulative Periodogram of Residuals (ARIMA)")
 
+plot_arma_residuals <- 
+  ggplot(df_resid_arma, aes(x = Index, y = Residuals)) +
+  geom_line(color = "#808080", linewidth = 0.7) +
+  ylim(-0.002, 0.002) +
+  labs(title = "Série residual do modelo ARIMA ajustado",
+       x = "Índice",
+       y = "Resíduos") + 
+  theme_pubr(legend = "right") +  
+  theme(plot.title = element_text(color = "black", 
+                                  face = "bold"),
+        axis.title = element_text(color = "black", 
+                                  face = "bold"), 
+        axis.text = element_text(color = "black", 
+                                 face = "bold"), 
+        panel.border = element_rect(color = "black", 
+                                    fill = NA, 
+                                    size = 1)) +
+  scale_x_continuous(breaks = seq(0, 
+                                  max(df_resid_arma$Index), 
+                                  by = 25))
 #-------------------------------- Portmanteau ----------------------------------  
 # Ruey Tsay (2005) Analysis of Financial Time Series, 2nd ed. (Wiley, ch. 2)
 # (My suggestion) calculate to m = p' + q' + log(T)... | (m > p + q)
@@ -1147,7 +1346,7 @@ LB_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30)
 DUF_stat <- matrix(rep(NA,30), nrow = 1, ncol = 30) 
 
 # df
-arma_fitdf <-  1 + 2 # p'+q'
+arma_fitdf <-  4 + 3 # p'+q'
 
 # Lag m vector
 # min(10, T/5) robjhyndman
@@ -1222,7 +1421,7 @@ pormt_KwanS_arma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Kwan and Sim 4 (ARIMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -1235,7 +1434,7 @@ pormt_KwanS_arma <-
 #   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
 #   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
 #   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Q4 (ARIMA)") +
-#   theme_bw() +  # Use a theme with a boxed layout
+#   theme_pubr() +  # Use a theme with a boxed layout
 #   theme(plot.title = element_text(color = "black", face = "bold"),  
 #         axis.title = element_text(color = "black", face = "bold"),  
 #         axis.text = element_text(color = "black"), 
@@ -1248,7 +1447,7 @@ pormt_LB_arma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Ljung-Box (ARIMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -1263,7 +1462,7 @@ pormt_DUF_arma <-
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) + 
   coord_cartesian(ylim = c(0, 1)) +  # Set y-axis limits
   labs(x = "Lag", y = "Valores p", title = "Teste portmanteau Dufour e Roy com ranks (ARIMA)") +
-  theme_bw() +  # Use a theme with a boxed layout
+  theme_pubr() +  # Use a theme with a boxed layout
   theme(plot.title = element_text(color = "black", face = "bold"),  
         axis.title = element_text(color = "black", face = "bold"),  
         axis.text = element_text(color = "black"), 
@@ -1326,7 +1525,7 @@ insample_plot_barma <-
   labs(x = "\nData (dia/mês)",
        y = "Razão de mortalidade materna em 2021\n (mortes por 100.000 nascidos vivos)\n",
        title = "Previsão intra-amostra") +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
         axis.title = element_text(color = "black", 
@@ -1341,10 +1540,13 @@ insample_plot_barma <-
         plot.margin = margin(1, 1, 1, 1, "cm")) +
   scale_x_date(date_breaks = "1 month", 
                date_labels = "%d/%m",
-               limits = c(min(df_plot$date_formatted), max(df_plot$date_formatted))) +
+               limits = c(min(df_plot$date_formatted), 
+                          max(df_plot$date_formatted))) +
   scale_y_continuous(labels = scales::comma) +
-  coord_cartesian(xlim = c(min(df_plot$date_formatted), max(df_plot$date_formatted)),
-                  ylim = c(min(df_plot$observed), max(df_plot$observed))) +
+  coord_cartesian(xlim = c(min(df_plot$date_formatted), 
+                           max(df_plot$date_formatted)),
+                  ylim = c(min(df_plot$observed), 
+                           max(df_plot$observed))) +
   annotate("text", 
            x = max(df_plot$date_formatted) - 112, 
            y = max(df_plot$observed) + 0, 
@@ -1376,7 +1578,7 @@ insample_plot_arma <-
   labs(x = "\nData (dia/mês)",
        y = "Razão de mortalidade materna em 2021\n (mortes por 100.000 nascidos vivos)\n",
        title = "Previsão intra-amostra") +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
         axis.title = element_text(color = "black", 
@@ -1391,10 +1593,13 @@ insample_plot_arma <-
         plot.margin = margin(1, 1, 1, 1, "cm")) +
   scale_x_date(date_breaks = "1 month", 
                date_labels = "%d/%m",
-               limits = c(min(df_plot$date_formatted), max(df_plot$date_formatted))) +
+               limits = c(min(df_plot$date_formatted),
+                          max(df_plot$date_formatted))) +
   scale_y_continuous(labels = scales::comma) +
-  coord_cartesian(xlim = c(min(df_plot$date_formatted), max(df_plot$date_formatted)),
-                  ylim = c(min(df_plot$observed), max(df_plot$observed))) +
+  coord_cartesian(xlim = c(min(df_plot$date_formatted), 
+                           max(df_plot$date_formatted)),
+                  ylim = c(min(df_plot$observed), 
+                           max(df_plot$observed))) +
   annotate("text", 
            x = max(df_plot$date_formatted) - 112, 
            y = max(df_plot$observed) + 0, 
@@ -1405,7 +1610,7 @@ insample_plot_arma <-
   annotate("text", 
            x = max(df_plot$date_formatted) - 112,
            y = max(df_plot$observed) -25,
-           label = "Previsão ARMA", 
+           label = "Previsão ARIMA", 
            hjust = 0, 
            vjust = 1,
            color = "darkblue")
@@ -1418,15 +1623,15 @@ insample_plot_karma <-
   geom_point(aes(y = observed), 
              color = "#646464") +
   geom_line(aes(y = predicted3), 
-            color = "#29CE60", 
+            color = "#2EC033", 
             linetype = "solid",
             size = 0.9) +
   geom_point(aes(y = predicted3), 
-             color = "#29CE60") +
+             color = "#2EC033") +
   labs(x = "\nData (dia/mês)",
        y = "Razão de mortalidade materna em 2021\n (mortes por 100.000 nascidos vivos)\n",
        title = "Previsão intra-amostra") +
-  theme_bw() +  
+  theme_pubr() +  
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
         axis.title = element_text(color = "black", 
@@ -1458,7 +1663,7 @@ insample_plot_karma <-
            label = "Previsão KARMA", 
            hjust = 0, 
            vjust = 1,
-           color = "#29CE60")
+           color = "#2EC033")
 #dev.off()
 
 #-------------------------------------------------------------------------------
@@ -1483,19 +1688,27 @@ end_date <- as.Date(max(df_plot_test$date_formatted))
 # Out-of-sample plot
 predi_all <- 
 ggplot(df_plot_test, aes(x = date_formatted)) +
-  geom_line(aes(y = observed, color = "Observado", linetype = "Observado"), 
+  geom_line(aes(y = observed, 
+                color = "Observado", 
+                linetype = "Observado"), 
             size = 0.8) +
-  geom_line(aes(y = predicted, color = "βARMA", linetype = "βARMA"), 
+  geom_line(aes(y = predicted, 
+                color = "βARMA", 
+                linetype = "βARMA"), 
             size = 0.8) +
-  geom_line(aes(y = karma_predicted, color = "KARMA", linetype = "KARMA"), 
+  geom_line(aes(y = karma_predicted, 
+                color = "KARMA", 
+                linetype = "KARMA"), 
             size = 0.8) +
-  geom_line(aes(y = arma_predicted, color = "ARMA", linetype = "ARMA"),
+  geom_line(aes(y = arma_predicted, 
+                color = "ARIMA", 
+                linetype = "ARIMA"),
             size = 0.8) +  # Add this line
   labs(x = "\nData (dia/mês)",
        y = "Razão de mortalidade materna em 2021\n (mortes por 100.000 nascidos vivos)\n",
        title = "Previsão fora da amostra treino",
        color = "") +
-  theme_bw() +
+  theme_pubr(legend = "right") +
   theme(plot.title = element_text(color = "black", 
                                   face = "bold"),  
         axis.title = element_text(color = "black", 
@@ -1516,55 +1729,85 @@ ggplot(df_plot_test, aes(x = date_formatted)) +
   coord_cartesian(ylim = c(0, 400)) +
   scale_color_manual(values = c("Observado" = "black", 
                                 "βARMA" = "red",
-                                "KARMA" = "#29CE60",
-                                "ARMA" = "blue"),
-                     breaks = c("Observado", "βARMA", "KARMA", "ARMA")) +
+                                "KARMA" = "#2EC033",
+                                "ARIMA" = "blue"),
+                     breaks = c("Observado", "βARMA", 
+                                "KARMA", "ARIMA")) +
   scale_linetype_manual(values=c("Observado" = "solid", 
                                  "βARMA" = "dashed",
                                  "KARMA" = "twodash",
-                                 "ARMA" = "dotted"),
-                        breaks = c("Observado", "βARMA", "KARMA", "ARMA"), 
+                                 "ARIMA" = "dotted"),
+                        breaks = c("Observado", "βARMA", 
+                                   "KARMA", "ARIMA"), 
                         name = "")
 
 #-------------------------------------------------------------------------------
 # Join figures
-
 library("patchwork")
-#png("pred_in_plot_2021.png", units = "in", width = 14, height = 5, res = 300)
+
+# layout <- "
+# A#B
+# #C#
+# "
+#------------------------------------------
+png(
+  "figures/pred_in_plot_2021.png", 
+  units = "in", 
+  width = 7, 
+  height = 12, 
+  res = 300
+)
 # out and in sample plots
-(insample_plot1 +
-    insample_plot2 +
-    #predi_both +
-    plot_layout(ncol = 2))
-#dev.off()
-
-#png("pred_out_plot_2021.png", units = "in", width = 8, height = 5, res = 300)
+(insample_plot_barma +
+    insample_plot_karma +
+    insample_plot_arma +
+    plot_layout(
+      #design = layout,
+      ncol = 1, 
+      nrow = 3
+      )
+  )
+dev.off()
+#------------------------------------------
+png(
+  "figures/pred_out_plot_2021.png", 
+  units = "in", 
+  width = 9, 
+  height = 5, 
+  res = 300
+)
 # out and in sample plots
-predi_both  
-#dev.off()
-
-#png("barma_diag_2021.png", units = "in", width = 13, height = 7, res = 300)
-(resid_pondera1 +
-    acf_funct_barma +
-    p_qqplot +
-    p_densidade +
-    plot_layout(ncol = 2))
-#dev.off()
-
-# portmanteau 
-
-
-# acf
-
-
-# normality
-
-
-
+predi_all  
+dev.off()
+#------------------------------------------
+png(
+  "figures/residual_diag_plot.png", 
+  units = "in", 
+  width = 17, 
+  height = 10, 
+  res = 300
+)
+(
+  plot_barma_residuals + acf_func_barma + barma_qqplot + 
+  plot_karma_residuals + acf_func_karma + karma_qqplot + 
+  plot_arma_residuals + acf_func_arma + arma_qqplot +
+  plot_layout(ncol = 3, nrow = 3)
+)
+dev.off()
+#------------------------------------------
+# Distribution plots
+png(
+  "figures/distro_data.png", 
+  units = "in", 
+  width = 9, 
+  height = 5, 
+  res = 300
+)
+distro_data
+dev.off()
 ################################################################################
 #------------------------------ Model comparison -------------------------------
 ################################################################################
-
 # Initializing the result matrix
 table_metrics <- matrix(rep(NA, 9*h), nrow = 9, ncol = h)                           
 
@@ -1618,22 +1861,26 @@ for(i in 1:h)
 }
 
 # Set the row names to indicate the metric and method
-rownames(table_metrics) <- c("MAE(BARMA)x100", 
-                             "MAE(ARIMA)x100",
-                             "MAE(KARMA)x100",
-                             "RMSE(BARMA)",
-                             "RMSE(ARIMA)",
-                             "RMSE(KARMA)",
-                             "sMAPE(BARMA)", 
-                             "sMAPE(ARIMA)",
-                             "sMAPE(KARMA)")
-colnames(table_metrics) <- c("h=1", 
-                             "h=2", 
-                             "h=3", 
-                             "h=4", 
-                             "h=5", 
-                             "h=6",
-                             "h=7"
-                             )
+rownames(table_metrics) <- c(
+  "MAE(BARMA)x100", 
+  "MAE(ARIMA)x100",
+  "MAE(KARMA)x100",
+  "RMSE(BARMA)",
+  "RMSE(ARIMA)",
+  "RMSE(KARMA)",
+  "sMAPE(BARMA)", 
+  "sMAPE(ARIMA)",
+  "sMAPE(KARMA)"
+)
+
+colnames(table_metrics) <- c(
+  "h=1", 
+  "h=2", 
+  "h=3", 
+  "h=4", 
+  "h=5", 
+  "h=6",
+  "h=7"
+)
 
 table_metrics

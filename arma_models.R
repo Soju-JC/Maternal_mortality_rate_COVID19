@@ -85,7 +85,7 @@ for (k in 1:length(list_combinations)) {
   }
 }
 
-valid_models # 104 (161) of 4096 
+valid_models # (87) of 4096 
 valid_models_aic # min: AIC -1516.579
 valid_models_bic # min: BIC -1504.638
 
