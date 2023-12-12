@@ -202,6 +202,7 @@ if(d == 0){
   a = min(y) 
   b = max(y)    
   y = (y - a + c)/(b + c - a + c)
+  #y = (y - a)/(b - a)
 } else {warning("d NOT SUPPORTED!")}
 
 n_data = length(y)
